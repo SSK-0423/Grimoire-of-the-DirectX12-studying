@@ -35,6 +35,52 @@ struct PMD_VERTEX
 };
 #pragma pack(pop)
 
+#pragma pack(1)	//アライメント抑制
+//PMDマテリアル構造体
+struct PMDMaterial
+{
+	XMFLOAT3 diffuse;	//ディフューズ
+	float alpha;		//ディフューズα
+	float specularity;	//スペキュラの強さ（乗算値）
+	XMFLOAT3 specular;	//スペキュラ色
+	XMFLOAT3 ambient;	//アンビエント色
+	unsigned char toonIdx;	//トゥーン番号
+	unsigned char edgeFlg;	//マテリアルごとの輪郭線フラグ
+	//ここまで46
+	//注意：ここで2バイトのパディングが入る
+
+	unsigned int indicesNum;	//このマテリアルが割り当てられる
+								//インデックス数
+	char texFilePath[20];		//テクスチャファイルパス+α
+};//70バイトのはずだが、パディングが発生するため72バイトになる
+#pragma pack()
+
+//シェーダー側に投げられるマテリアルデータ
+struct MaterialForHlsl
+{
+	XMFLOAT3 diffuse;
+	float alpha;
+	XMFLOAT3 specular;
+	float specularity;
+	XMFLOAT3 ambient;
+};
+
+// それ以外のマテリアルデータ
+struct AdditionalMaterial
+{
+	std::string texPath;
+	int toonIdx;
+	bool edgeFlg;
+};
+
+// 全体をまとめるデータ
+struct Material
+{
+	unsigned int indicesNum;
+	MaterialForHlsl material;
+	AdditionalMaterial additional;
+};
+
 ///@brief コンソール画面にフォーマット付き文字列を表示
 ///@param format フォーマット(%dとか%fとかの)
 ///@param 可変長引数
@@ -317,7 +363,27 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	std::vector<unsigned short> indices(indicesNum);
 
 	fread(indices.data(), indices.size() * sizeof(indices[0]), 1, fp);
+
+	//マテリアルデータ
+	unsigned int materialNum;	// マテリアル数
+	fread(&materialNum, sizeof(unsigned int), 1, fp);
+
+	std::vector<PMDMaterial> pmdMaterials(materialNum);
+
+	fread(pmdMaterials.data(), pmdMaterials.size()* materialNum, 1, fp); // 一気に読み込む
+
 	fclose(fp);
+
+	std::vector<Material> materials(pmdMaterials.size());
+	//コピー
+	for (size_t i = 0; i < pmdMaterials.size(); i++) {
+		materials[i].indicesNum = pmdMaterials[i].indicesNum;
+		materials[i].material.diffuse = pmdMaterials[i].diffuse;
+		materials[i].material.alpha = pmdMaterials[i].alpha;
+		materials[i].material.specular = pmdMaterials[i].specular;
+		materials[i].material.specularity = pmdMaterials[i].specularity;
+		materials[i].material.ambient = pmdMaterials[i].ambient;
+	}
 
 	ID3D12Resource* idxBuff = nullptr;
 	heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
