@@ -122,11 +122,11 @@ void RefacApplication::Run()
 		_pmdActor->Update();
 		_pmdActor->Draw();
 
-		for (const auto& actor : _pmdActors)
-		{
-			actor->Update();
-			actor->Draw();
-		}
+		//for (const auto& actor : _pmdActors)
+		//{
+		//	actor->Update();
+		//	actor->Draw();
+		//}
 
 		_dx12->EndDraw();
 
@@ -141,7 +141,6 @@ void RefacApplication::Terminate()
 	//クラスの登録解除
 	UnregisterClass(_windowClass.lpszClassName, _windowClass.hInstance);
 }
-
 
 //シングルトンインスタンス取得
 RefacApplication& RefacApplication::Instance()

@@ -117,7 +117,7 @@ HRESULT PMDActor::CreateMaterialAndTextureView()
 	D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
 	matDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	matDescHeapDesc.NodeMask = 0;
-	matDescHeapDesc.NumDescriptors = _materials.size() * 5;
+	matDescHeapDesc.NumDescriptors = _materials.size() * 5;//定数１つ＋テクスチャ4つ
 	matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	auto result = _dx12.Device()->CreateDescriptorHeap(&matDescHeapDesc, IID_PPV_ARGS(_materialHeap.ReleaseAndGetAddressOf()));
 	RETURN_FAILED(result);
@@ -164,6 +164,8 @@ HRESULT PMDActor::CreateMaterialAndTextureView()
 	auto matDescHeapH = _materialHeap->GetCPUDescriptorHandleForHeapStart();
 	auto inc = _dx12.Device()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
+	//マテリアルの数だけmaterialHeapに「定数：1，テクスチャ：4」のディスクリプタ(ビュー)を追加する
+	//初音ミク.pmdの場合、マテリアルは17個あるので_materialHeapには5 * 17 = 85個のディスクリプタがある
 	for (size_t i = 0; i < _materials.size(); i++) {
 		//マテリアル用定数バッファ―ビュー
 		_dx12.Device()->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
@@ -452,6 +454,7 @@ void PMDActor::Draw()
 	auto materialH = _materialHeap->GetGPUDescriptorHandleForHeapStart();
 	unsigned int idxOffset = 0;
 
+	//「定数：1, テクスチャ：4」がマテリアル1つ分なので5倍する
 	auto cbvsrvIncSize = _dx12.Device()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 	for (auto& m : _materials) {
 		_dx12.CommandList()->SetGraphicsRootDescriptorTable(2, materialH);

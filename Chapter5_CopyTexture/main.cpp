@@ -655,10 +655,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		nullptr,
 		IID_PPV_ARGS(&texbuff)
 	);
-
+	//8ビット=1バイト
 	uint8_t* mapforImg = nullptr;//image->pixelsと同じ型にする
 	result = uploadbuff->Map(0, nullptr, (void**)&mapforImg);//マップ
-	auto srcAddress = img->pixels;
+	auto srcAddress = img->pixels;//200 * 200 * 1 * 4
+	auto p = img->rowPitch;	//800 = uint8(1バイト) * 4(RGBA) * 200列
+	auto height = img->height;
 	auto rowPitch = AlignmentedSize(img->rowPitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
 	for (int y = 0; y < img->height; ++y) {
 		std::copy_n(srcAddress, 
@@ -811,10 +813,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		// 命令のクローズ
 		// 命令の受付を辞める
 		cmdList_->Close();
-
-
-
-
 
 		// コマンドリストの実行
 		ID3D12CommandList* cmdlists[] = { cmdList_ };

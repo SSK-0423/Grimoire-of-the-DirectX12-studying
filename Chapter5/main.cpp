@@ -625,6 +625,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	//単一アダプターのための0
 	texHeapProp.CreationNodeMask = 0;
+
 	texHeapProp.VisibleNodeMask = 0;
 
 	D3D12_RESOURCE_DESC texResDesc = {};
