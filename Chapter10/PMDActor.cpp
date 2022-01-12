@@ -2,6 +2,10 @@
 #include"PMDRenderer.h"
 #include"Dx12Wrapper.h"
 #include <d3dx12.h>
+#include <mmsystem.h>
+#include <algorithm>
+
+#pragma comment(lib,"winmm.lib")
 
 using namespace Microsoft::WRL;
 using namespace std;
@@ -44,28 +48,56 @@ namespace {
 	}
 }
 
-void* 
+void*
 PMDActor::Transform::operator new(size_t size) {
 	return _aligned_malloc(size, 16);
 }
 
-PMDActor::PMDActor(const char* filepath,PMDRenderer& renderer):
+float PMDActor::GetYFromXOnBazier(float x, const DirectX::XMFLOAT2& a, const DirectX::XMFLOAT2& b, uint8_t n)
+{
+	if (a.x == a.y && b.x == b.y) return x;
+
+	float t = x;
+	const float k0 = 1 + 3 * a.x - 3 * b.x;	//t^3の係数
+	const float k1 = 3 * b.x - 6 * a.x;	//t^2の係数
+	const float k2 = 3 * a.x;
+
+	//誤差の範囲内かどうかに使用する定数
+	constexpr float epsilon = 0.0005f;
+
+	//tを近似で求める
+	for (int i = 0; i < n; i++)
+	{
+		//f(t)を求める
+		auto ft = k0 * t * t * t + k1 * t * t + k2 * t - x;
+
+		//もし結果が0に近い(誤差の範囲内)なら打ち切る
+		if (ft <= epsilon && ft >= -epsilon) break;
+
+		t -= ft / 2; //刻む
+	}
+
+	//求めたいtはすでに求めているのでyを計算する
+	auto r = 1 - t;
+	return t * t * t + 3 * t * t * r * b.y + 3 * t * r * r * a.y;
+}
+
+PMDActor::PMDActor(const char* filepath, PMDRenderer& renderer) :
 	_renderer(renderer),
 	_dx12(renderer._dx12),
 	_angle(0.0f)
 {
 	_transform.world = XMMatrixIdentity();
 	LoadPMDFile(filepath);
+	LoadMotionData("motion/マフティーダンス.vmd");
 	CreateTransformView();
 	CreateMaterialData();
 	CreateMaterialAndTextureView();
 }
 
-
 PMDActor::~PMDActor()
 {
 }
-
 
 HRESULT
 PMDActor::LoadPMDFile(const char* path) {
@@ -81,7 +113,7 @@ PMDActor::LoadPMDFile(const char* path) {
 	string strModelPath = path;
 	FILE* fp;
 
-	fopen_s(&fp,strModelPath.c_str(), "rb");
+	fopen_s(&fp, strModelPath.c_str(), "rb");
 	if (fp == nullptr) {
 		//エラー処理
 		assert(0);
@@ -111,14 +143,14 @@ PMDActor::LoadPMDFile(const char* path) {
 #pragma pack()//1バイトパッキング解除
 
 	constexpr unsigned int pmdvertex_size = 38;//頂点1つあたりのサイズ
-	std::vector<unsigned char> vertices(vertNum*pmdvertex_size);//バッファ確保
+	std::vector<unsigned char> vertices(vertNum * pmdvertex_size);//バッファ確保
 	fread(vertices.data(), vertices.size(), 1, fp);//一気に読み込み
 
 	unsigned int indicesNum;//インデックス数
 	fread(&indicesNum, sizeof(indicesNum), 1, fp);//
 
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertices.size()*sizeof(vertices[0]));
+	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertices.size() * sizeof(vertices[0]));
 
 	//UPLOAD(確保は可能)
 	auto result = _dx12.Device()->CreateCommittedResource(
@@ -143,9 +175,9 @@ PMDActor::LoadPMDFile(const char* path) {
 	fread(indices.data(), indices.size() * sizeof(indices[0]), 1, fp);//一気に読み込み
 
 
-	auto resDescBuf=CD3DX12_RESOURCE_DESC::Buffer(indices.size() * sizeof(indices[0]));
-	
-	
+	auto resDescBuf = CD3DX12_RESOURCE_DESC::Buffer(indices.size() * sizeof(indices[0]));
+
+
 	//設定は、バッファのサイズ以外頂点バッファの設定を使いまわして
 	//OKだと思います。
 	result = _dx12.Device()->CreateCommittedResource(
@@ -255,7 +287,7 @@ PMDActor::LoadPMDFile(const char* path) {
 	unsigned short boneNum = 0;
 	fread(&boneNum, sizeof(boneNum), 1, fp);
 
-//パディングでサイズが変わっちゃうとボーンデータ読み込みがうまくいかないので必須
+	//パディングでサイズが変わっちゃうとボーンデータ読み込みがうまくいかないので必須
 #pragma pack(1)
 	//読込用ボーン構造体
 	struct PMDBone
@@ -302,12 +334,159 @@ PMDActor::LoadPMDFile(const char* path) {
 
 }
 
-HRESULT 
+//モーションデータ(.vmd)読み込み
+void PMDActor::LoadMotionData(const char* path)
+{
+	FILE* fp = nullptr;
+	fopen_s(&fp, path, "rb");
+
+	//ファイル読み込み失敗
+	if (fp == nullptr)
+	{
+		assert(0);
+		return;
+	}
+	//ヘッダー50バイトを飛ばす
+	fseek(fp, 50, SEEK_SET);
+
+	unsigned int motionDataNum = 0;
+	fread(&motionDataNum, sizeof(motionDataNum), 1, fp);
+
+#pragma pack(1)
+	struct VMDMotion
+	{
+		char boneName[15];	//ボーン名
+		unsigned int frameNo;	//フレーム番号
+		DirectX::XMFLOAT3 location;	//位置
+		DirectX::XMFLOAT4 quaternion;	//クォータニオン
+		unsigned char bezier[64];	//[4][4][4]ベジェ補間パラメータ
+	};
+#pragma pack()
+	std::vector<VMDMotion> vmdMotionData(motionDataNum);
+
+	//size_t withoutBoneNameSize = sizeof(vmdMotionData[0].frameNo)
+	//	+ sizeof(vmdMotionData[0].location)
+	//	+ sizeof(vmdMotionData[0].quaternion)
+	//	+ sizeof(vmdMotionData[0].bazier);
+
+	for (auto& motion : vmdMotionData)
+	{
+		//ボーン名のサイズは16バイトなため、1バイトのパディングが入ってしまう
+		//ボーン名からベジェまで一括で読み込むとパディングの影響でずれてしまうため、
+		//ボーン名とそれ以外に分けて読み込む
+		//fread(motion.boneName, sizeof(motion.boneName), 1, fp);	//ボーン名
+		////ボーン名以外
+		//fread(&motion.frameNo, withoutBoneNameSize, 1, fp);
+		fread(&motion, sizeof(VMDMotion), 1, fp);
+
+		//最終フレームを記録
+		_duration = std::max<unsigned int>(_duration, motion.frameNo);
+	}
+	//VMDのモーションデータから、実際に使用するモーションテーブルへ変換
+	for (auto& motion : vmdMotionData)
+	{
+		_motionData[motion.boneName].emplace_back(
+			KeyFrame(
+				motion.frameNo, XMLoadFloat4(&motion.quaternion),
+				XMFLOAT2((float)motion.bezier[3] / 127.f,(float)motion.bezier[7] / 127.f),
+				XMFLOAT2((float)motion.bezier[11] / 127.f,(float)motion.bezier[15] / 127.f)
+			));
+	}
+
+	//キーフレーム順にソート
+	for (auto& bonemotion : _motionData)
+	{
+		std::sort(bonemotion.second.begin(), bonemotion.second.end(),
+			[](const KeyFrame& lval, const KeyFrame& rval)
+			{return lval.frameNo <= rval.frameNo; }
+		);
+	}
+	fclose(fp);
+}
+
+void PMDActor::MotionUpdate()
+{
+	DWORD elapsedTime = timeGetTime() - _startTime;
+	//30fpsなので、30 * 経過時間(秒)で経過フレーム数が算出できる
+	unsigned int frameNo = 30 * (static_cast<float>(elapsedTime) / 1000.f);
+
+	if (frameNo > _duration)
+	{
+		_startTime = timeGetTime();
+		frameNo = 0;
+	}
+
+	//行列情報クリア
+	//(クリアしていないと前フレームのポーズが重ね掛けされてモデルが壊れる)
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	//モーションデータ更新
+	for (auto& bonemotion : _motionData)
+	{
+		//モーションデータに含まれているボーンが存在するか
+		auto itBoneNode = _boneNodeTable.find(bonemotion.first);
+		if (itBoneNode == _boneNodeTable.end()) continue;
+
+		BoneNode node = _boneNodeTable[bonemotion.first];
+
+		//合致するものを探す
+		std::vector<KeyFrame> motions = bonemotion.second;
+		auto rit = std::find_if(
+			motions.rbegin(), motions.rend(),
+			[frameNo](const KeyFrame& motion)//ラムダ式
+			{
+				return motion.frameNo <= frameNo;
+			}
+		);
+		//合致するものがなければ処理を飛ばす
+		if (rit == motions.rend()) continue;
+
+		XMMATRIX rotation;
+		//rit：前のアニメーション(現在のポーズ)
+		//it：次のアニメーション(次のポーズ)
+		auto it = rit.base();
+		
+		if (it != motions.end())
+		{
+			float t = static_cast<float>(frameNo - rit->frameNo)
+				/ static_cast<float>(it->frameNo - rit->frameNo);
+
+			t = GetYFromXOnBazier(t, it->p1, it->p2, 12);
+
+			//球面線形補間
+			rotation = XMMatrixRotationQuaternion(
+				XMQuaternionSlerp(rit->quaternion, it->quaternion, t));
+			//線形補間
+			//rotation = XMMatrixRotationQuaternion(rit->quaternion)
+			//	* (1 - t)
+			//	+ XMMatrixRotationQuaternion(it->quaternion)
+			//	* t;
+		}
+		else
+		{
+			rotation = XMMatrixRotationQuaternion(rit->quaternion);
+		}
+
+		XMFLOAT3 pos = node.startPos;
+		XMMATRIX mat = XMMatrixTranslation(-pos.x, -pos.y, -pos.z)
+			* rotation
+			* XMMatrixTranslation(pos.x, pos.y, pos.z);
+		_boneMatrices[node.boneIdx] = mat;
+	}
+
+	//この動きだけなら左腕からでもいいが、ルートノードからの再帰だと全ノードのボーン行列変換を一括で適用できる
+	RecursiveMatrixMultiply(&_boneNodeTable["センター"], XMMatrixIdentity());
+
+	//_mappedMatrices[1]からボーン行列をコピーする
+	std::copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+}
+
+HRESULT
 PMDActor::CreateTransformView() {
 	//GPUバッファ作成
 	//ワールド行列＋ボーン行列を1つのバッファ―で一気に渡す
 	auto buffSize = sizeof(XMMATRIX) * (1 + _boneMatrices.size());
-	buffSize = (buffSize + 0xff)&~0xff;
+	buffSize = (buffSize + 0xff) & ~0xff;
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(buffSize);
 
@@ -332,31 +511,40 @@ PMDActor::CreateTransformView() {
 	}
 	_mappedMatrices[0] = _transform.world;
 
-	auto armNode = _boneNodeTable["左腕"];
-	auto& armPos = armNode.startPos;
-	auto armMat = XMMatrixTranslation(-armPos.x,-armPos.y,-armPos.z)
-		* XMMatrixRotationZ(XM_PIDIV2)
-		* XMMatrixTranslation(armPos.x,armPos.y,armPos.z);
-	//RecursiveMatrixMultiply(&armNode, armMat);
+	//auto armNode = _boneNodeTable["左腕"];
+	//auto& armPos = armNode.startPos;
+	//auto armMat = XMMatrixTranslation(-armPos.x, -armPos.y, -armPos.z)
+	//	* XMMatrixRotationZ(XM_PIDIV2)
+	//	* XMMatrixTranslation(armPos.x, armPos.y, armPos.z);
 
-	auto elbowNode = _boneNodeTable["左ひじ"];
-	auto& elbowPos = elbowNode.startPos;
-	auto elbowMat = XMMatrixTranslation(-elbowPos.x, -elbowPos.y, -elbowPos.z)
-		* XMMatrixRotationZ(XM_PIDIV2)
-		* XMMatrixTranslation(elbowPos.x, elbowPos.y, elbowPos.z);
-	//RecursiveMatrixMultiply(&elbowNode, elbowMat);
+	//auto elbowNode = _boneNodeTable["左ひじ"];
+	//auto& elbowPos = elbowNode.startPos;
+	//auto elbowMat = XMMatrixTranslation(-elbowPos.x, -elbowPos.y, -elbowPos.z)
+	//	* XMMatrixRotationZ(XM_PIDIV2)
+	//	* XMMatrixTranslation(elbowPos.x, elbowPos.y, elbowPos.z);
 
-	//ボーンが２つあるため、先に代入しておいて一括で再帰処理しないと変換がおかしくなる
-	//恐らく、左腕・左ひじで共通の子がおり、何度も呼ばれることで過剰に変換してしまっている
-	_boneMatrices[armNode.boneIdx] = armMat;
-	_boneMatrices[elbowNode.boneIdx] = elbowMat;
+	////ボーンが２つあるため、先に代入しておいて一括で再帰処理しないと変換がおかしくなる
+	////恐らく、左腕・左ひじで共通の子がおり、何度も呼ばれることで過剰に変換してしまっている
+	//_boneMatrices[armNode.boneIdx] = armMat;
+	//_boneMatrices[elbowNode.boneIdx] = elbowMat;
+
+	////モーションデータのクォータニオンから回転適用
+	//for (auto& bonemotion : _motionData)
+	//{
+	//	auto node = _boneNodeTable[bonemotion.first];
+	//	auto& pos = node.startPos;
+	//	auto mat = XMMatrixTranslation(-pos.x, -pos.y, -pos.z)
+	//		* XMMatrixRotationQuaternion(bonemotion.second[0].quaternion)
+	//		* XMMatrixTranslation(pos.x, pos.y, pos.z);
+	//	_boneMatrices[node.boneIdx] = mat;
+	//}
 
 	//この動きだけなら左腕からでもいいが、ルートノードからの再帰だと全ノードのボーン行列変換を一括で適用できる
 	RecursiveMatrixMultiply(&_boneNodeTable["センター"], XMMatrixIdentity());
 
 	//_mappedMatrices[1]からボーン行列をコピーする
 	std::copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
-	
+
 	//ビューの作成
 	D3D12_DESCRIPTOR_HEAP_DESC transformDescHeapDesc = {};
 	transformDescHeapDesc.NumDescriptors = 1;//とりあえずワールドひとつ
@@ -382,7 +570,7 @@ HRESULT
 PMDActor::CreateMaterialData() {
 	//マテリアルバッファを作成
 	auto materialBuffSize = sizeof(MaterialForHlsl);
-	materialBuffSize = (materialBuffSize + 0xff)&~0xff;
+	materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
 
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(materialBuffSize * _materials.size());
@@ -418,7 +606,7 @@ PMDActor::CreateMaterialData() {
 }
 
 
-HRESULT 
+HRESULT
 PMDActor::CreateMaterialAndTextureView() {
 	D3D12_DESCRIPTOR_HEAP_DESC materialDescHeapDesc = {};
 	materialDescHeapDesc.NumDescriptors = _materials.size() * 5;//マテリアル数ぶん(定数1つ、テクスチャ3つ)
@@ -432,11 +620,11 @@ PMDActor::CreateMaterialAndTextureView() {
 		return result;
 	}
 	auto materialBuffSize = sizeof(MaterialForHlsl);
-	materialBuffSize = (materialBuffSize + 0xff)&~0xff;
+	materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
 	D3D12_CONSTANT_BUFFER_VIEW_DESC matCBVDesc = {};
 	matCBVDesc.BufferLocation = _materialBuff->GetGPUVirtualAddress();
 	matCBVDesc.SizeInBytes = materialBuffSize;
-	
+
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;//後述
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;//2Dテクスチャ
@@ -503,18 +691,19 @@ void PMDActor::RecursiveMatrixMultiply(BoneNode* node, const DirectX::XMMATRIX& 
 	}
 }
 
-void 
+void
 PMDActor::Update() {
-	_angle += 0.03f;
+	//_angle += 0.03f;
 	//_mappedTransform->world = XMMatrixRotationY(_angle);
-	_mappedMatrices[0] =  XMMatrixRotationY(_angle);
+	_mappedMatrices[0] = XMMatrixRotationY(_angle);
+	MotionUpdate();
 }
-void 
+void
 PMDActor::Draw() {
 	_dx12.CommandList()->IASetVertexBuffers(0, 1, &_vbView);
 	_dx12.CommandList()->IASetIndexBuffer(&_ibView);
 
-	ID3D12DescriptorHeap* transheaps[] = {_transformHeap.Get()};
+	ID3D12DescriptorHeap* transheaps[] = { _transformHeap.Get() };
 	_dx12.CommandList()->SetDescriptorHeaps(1, transheaps);
 	_dx12.CommandList()->SetGraphicsRootDescriptorTable(1, _transformHeap->GetGPUDescriptorHandleForHeapStart());
 
@@ -535,4 +724,9 @@ PMDActor::Draw() {
 		idxOffset += m.indicesNum;
 	}
 
+}
+
+void PMDActor::PlayAnimation()
+{
+	_startTime = timeGetTime();
 }

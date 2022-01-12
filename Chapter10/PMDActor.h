@@ -6,6 +6,7 @@
 #include<string>
 #include<wrl.h>
 #include <map>
+#include <unordered_map>
 
 class Dx12Wrapper;
 class PMDRenderer;
@@ -99,7 +100,29 @@ private:
 
 	void RecursiveMatrixMultiply(BoneNode* node, const DirectX::XMMATRIX& mat);
 
+	//モーション構造体
+	struct KeyFrame
+	{
+		unsigned int frameNo;	//アニメーション開始からのフレーム数
+		DirectX::XMVECTOR quaternion;	//クォータニオン
+		DirectX::XMFLOAT2 p1, p2;	//ベジェ曲線の中間コントロールポイント
+		KeyFrame(const unsigned int fno, const DirectX::XMVECTOR& q,
+			const DirectX::XMFLOAT2& ip1, const DirectX::XMFLOAT2& ip2)
+			: frameNo(fno),quaternion(q),p1(ip1),p2(ip2)
+		{}
+	};
+
+	std::unordered_map<std::string, std::vector<KeyFrame>> _motionData;
+	//モーションデータ読み込み
+	void LoadMotionData(const char* path);
 	float _angle;//テスト用Y軸回転
+
+	void MotionUpdate();
+	
+	DWORD _startTime;	//アニメーション開始時のミリ秒
+	unsigned int _duration = 0;
+
+	float GetYFromXOnBazier(float x, const DirectX::XMFLOAT2& a, const DirectX::XMFLOAT2& b, uint8_t n);
 public:
 	PMDActor(const char* filepath, PMDRenderer& renderer);
 	~PMDActor();
@@ -107,6 +130,7 @@ public:
 	PMDActor* Clone();
 	void Update();
 	void Draw();
+	void PlayAnimation();
 
 };
 
