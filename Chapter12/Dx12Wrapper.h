@@ -66,12 +66,16 @@ class Dx12Wrapper
 
 	ComPtr<ID3D12RootSignature> _peraRootSignature = nullptr;
 	ComPtr<ID3D12PipelineState> _peraPipeline = nullptr;
+	ComPtr<ID3D12RootSignature> _peraRootSignature2 = nullptr;
+	ComPtr<ID3D12PipelineState> _peraPipeline2 = nullptr;
 
 	//1枚目のレンダリング結果
 	//ペラポリゴン
 	ComPtr<ID3D12Resource> _peraResource = nullptr;
+	ComPtr<ID3D12Resource> _peraResource2 = nullptr;
 	ComPtr<ID3D12DescriptorHeap> _peraRTVHeap = nullptr;	//レンダーターゲット用
 	ComPtr<ID3D12DescriptorHeap> _peraSRVHeap = nullptr;	//テクスチャ用
+
 	HRESULT CreatePeraResourceAndView();
 	//ペラポリゴンの頂点バッファ―＆ビュー生成
 	HRESULT CreatePeraVertexBufferAndView();
@@ -106,6 +110,17 @@ class Dx12Wrapper
 	ID3D12Resource* CreateTextureFromFile(const char* texpath);
 
 
+	//ガウシアンフィルタ関連
+	ComPtr<ID3D12Resource> _gaussianBuff = nullptr;
+	std::vector<float> _gaussianWeights;
+	std::vector<float> GetGaussianWeights(size_t count, float s);
+	HRESULT CreateGaussianConstantBufferAndView();
+
+	//歪みテクスチャ用
+	ComPtr<ID3D12DescriptorHeap> _effectSRVHeap = nullptr;
+	ComPtr<ID3D12Resource> _effectTexBuffer = nullptr;
+	HRESULT CreateEffectBufferAndView();
+
 public:
 	Dx12Wrapper(HWND hwnd);
 	~Dx12Wrapper();
@@ -115,14 +130,18 @@ public:
 	void PreDrawRenderTarget1(std::shared_ptr<PMDRenderer>& renderer);
 	void DrawRenderTarget1(std::shared_ptr<PMDRenderer>& renderer);
 	void EndDrawRenderTarget1();
+	//2パス目のレンダリング
+	void PreDrawRenderTarget2();
+	void DrawRenderTarget2();
+	void EndDrawRenderTarget2();
 
 	//最終レンダリング
 	void PreDrawFinalRenderTarget();
 	//最終レンダリング結果描画
 	void DrawFinalRenderTarget();
 
-	void BeginDraw();
 	void EndDraw();
+	void BeginDraw();
 	///テクスチャパスから必要なテクスチャバッファへのポインタを返す
 	///@param texpath テクスチャファイルパス
 	ComPtr<ID3D12Resource> GetTextureByPath(const char* texpath);

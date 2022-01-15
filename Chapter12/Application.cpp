@@ -77,6 +77,10 @@ Application::Run() {
 		_pmdActor->Draw();
 
 		_dx12->EndDrawRenderTarget1();
+		
+		_dx12->PreDrawRenderTarget2();
+		_dx12->DrawRenderTarget2();
+		_dx12->EndDrawRenderTarget2();
 
 		_dx12->PreDrawFinalRenderTarget();
 		_dx12->DrawFinalRenderTarget();
