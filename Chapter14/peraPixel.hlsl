@@ -137,14 +137,30 @@ float4 ps(Output input) : SV_TARGET
     float depth = pow(depthTex.Sample(smp, input.uv), 20);  // 20乗する
     float lightDepth = pow(lightDepthTex.Sample(smp, input.uv), 1);
     
+	if (input.uv.x < 0.2 && input.uv.y < 0.2)   //深度出力
+	{
+		float depth = depthTex.Sample(smp, input.uv * 5);
+		depth = 1.f - pow(depth, 30);
+		return float4(depth, depth, depth, 1);
+	}
+	else if (input.uv.x < 0.2 && input.uv.y < 0.4)  //ライトからの深度出力
+	{
+		float depth = lightDepthTex.Sample(smp, (input.uv - float2(0, 0.2f)) * 5);
+		depth = 1 - depth;
+		return float4(depth, depth, depth, 1);
+	}
+	else if (input.uv.x < 0.2 && input.uv.y < 0.6)
+	{
+		return texNormal.Sample(smp, (input.uv - float2(0, 0.4)) * 5);
+	}
+    
     /*
         ペラポリゴンの方は両方のデプスバッファーが来ている
         →ミスしているのはPMD側？
     */
-    
-    return float4(tex.Sample(smp, input.uv));
-    return float4(depth,depth,depth,1);
-    return float4(lightDepth, lightDepth, lightDepth, 1);
+	return float4(tex.Sample(smp, input.uv));
+	return float4(depth, depth, depth, 1);
+	return float4(lightDepth, lightDepth, lightDepth, 1);
     //return simpleGaussianBlur(input);
     
     //float4 col = tex.Sample(smp, input.uv);
@@ -159,4 +175,4 @@ float4 ps(Output input) : SV_TARGET
     //return float4(col.rgb - fmod(col.rgb, 0.25f), col.a);
     //return tex.Sample(smp, input.uv);
     //return float4(input.uv, 1, 1);
-}
+	}

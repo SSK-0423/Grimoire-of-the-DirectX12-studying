@@ -125,6 +125,37 @@ HRESULT Dx12Wrapper::CreateEffectBufferAndView()
 
 	return result;
 }
+
+//ブルーム用リソース作成
+HRESULT Dx12Wrapper::CreateBloomBufferAndView()
+{
+	auto& bbuff = _backBuffers[0];
+	auto resDesc = bbuff->GetDesc();
+	D3D12_HEAP_PROPERTIES heapPrpp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	D3D12_CLEAR_VALUE clearValue = {};
+	clearValue.Color[0] = clearValue.Color[1] = clearValue.Color[2] = 0.f;
+	clearValue.Color[3] = 1.f;
+	clearValue.Format = resDesc.Format;
+	HRESULT result = S_OK;
+	for (auto& buff : _bloomBuffer)
+	{
+		result = _dev->CreateCommittedResource(
+			&heapPrpp,
+			D3D12_HEAP_FLAG_NONE,
+			&resDesc,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			&clearValue,
+			IID_PPV_ARGS(buff.ReleaseAndGetAddressOf())
+		);
+		resDesc.Width >>= 1;	//右シフト(1/2)
+		if (FAILED(result))
+		{
+			assert(0);
+			return result;
+		}
+	}
+	return result;
+}
 Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 #ifdef _DEBUG
 	//デバッグレイヤーをオンに
@@ -159,7 +190,11 @@ Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 		assert(0);
 		return;
 	}
-
+	if (FAILED(CreateBloomBufferAndView()))
+	{
+		assert(0);
+		return;
+	}
 	if (FAILED(CreatePeraResourceAndView())) {
 		assert(0);
 		return;
@@ -719,24 +754,27 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	float clsClr[] = { 0.5f,0.5f,0.5f,1.0f };//白色
 	D3D12_CLEAR_VALUE clearValue = CD3DX12_CLEAR_VALUE(DXGI_FORMAT_R8G8B8A8_UNORM, clsClr);
 
-	//1枚目
-	auto result = _dev->CreateCommittedResource(
-		&heapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&resDesc,
-		//D3D12_RESOURCE_STATE_RENDER_TARGETではない
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		&clearValue,
-		IID_PPV_ARGS(_peraResource.ReleaseAndGetAddressOf())
-	);
+	//1パス目はマルチレンダーターゲット
+	for (auto& pera : _peraResource)
+	{
+		auto result = _dev->CreateCommittedResource(
+			&heapProp,
+			D3D12_HEAP_FLAG_NONE,
+			&resDesc,
+			//D3D12_RESOURCE_STATE_RENDER_TARGETではない
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			&clearValue,
+			IID_PPV_ARGS(pera.ReleaseAndGetAddressOf())
+		);
 
-	if (FAILED(result)) {
-		assert(0);
-		return result;
+		if (FAILED(result)) {
+			assert(0);
+			return result;
+		}
 	}
 
-	//2枚目
-	result = _dev->CreateCommittedResource(
+	//2パス目
+	auto result = _dev->CreateCommittedResource(
 		&heapProp,
 		D3D12_HEAP_FLAG_NONE,
 		&resDesc,
@@ -753,7 +791,7 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 
 	//RTV用ヒープを作る
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = _rtvHeaps->GetDesc();
-	heapDesc.NumDescriptors = 2;	//ガウシアンX、ガウシアンY
+	heapDesc.NumDescriptors = 4;	//1パス目(3枚) 2パス目(1枚)
 	result = _dev->CreateDescriptorHeap(
 		&heapDesc, IID_PPV_ARGS(_peraRTVHeap.ReleaseAndGetAddressOf()));
 
@@ -762,18 +800,26 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 	//レンダーターゲットビューを作る
-	//1枚目
+	//1,2枚目
 	auto handle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
+	for (auto& pera : _peraResource)
+	{
+		_dev->CreateRenderTargetView(
+			pera.Get(), &rtvDesc, handle);
+		handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	}
+	//3枚目(ブルーム)
 	_dev->CreateRenderTargetView(
-		_peraResource.Get(), &rtvDesc, handle);
-
-	//2枚目
+		_bloomBuffer[0].Get(), &rtvDesc, handle);
 	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	//4枚目
 	_dev->CreateRenderTargetView(
 		_peraResource2.Get(), &rtvDesc, handle);
 
 	//SRV用ヒープを作る
-	heapDesc.NumDescriptors = 3;	//ガウスパラメーターとシェーダー2つ
+	//1～3ペラポリゴン1用 4ペラポリゴン2用
+	heapDesc.NumDescriptors = 4;	//ガウスパラメーターとシェーダー2つ
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -792,12 +838,20 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
 	//シェーダーリソースビューを作る
-	//1枚目
+	//1パス目(1,2枚)
 	handle = _peraSRVHeap->GetCPUDescriptorHandleForHeapStart();
+	for (auto& pera : _peraResource)
+	{
+		_dev->CreateShaderResourceView(
+			pera.Get(), &srvDesc, handle);
+		handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	}
+	//3枚目(ブルーム)
 	_dev->CreateShaderResourceView(
-		_peraResource.Get(), &srvDesc, handle);
-	//2枚目
+		_bloomBuffer[0].Get(), &srvDesc, handle);
 	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	//2パス目(4枚目)
 	_dev->CreateShaderResourceView(
 		_peraResource2.Get(), &srvDesc, handle);
 
@@ -882,7 +936,7 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	//前パスのレンダリング結果
 	range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
 	range[0].BaseShaderRegister = 0;	// 0
-	range[0].NumDescriptors = 1;
+	range[0].NumDescriptors = 3; //マルチレンダーターゲット(3枚)なので3
 
 	range[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;	// b
 	range[1].BaseShaderRegister = 0;
@@ -890,12 +944,12 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 
 	//エフェクト用のテクスチャ
 	range[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
-	range[2].BaseShaderRegister = 1;	// 1
+	range[2].BaseShaderRegister = 3;	// 1
 	range[2].NumDescriptors = 1;
 	
 	//深度表示用テクスチャ
 	range[3].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
-	range[3].BaseShaderRegister = 2;	//2
+	range[3].BaseShaderRegister = 4;	//2
 	range[3].NumDescriptors = 2;	// 使うのは1個
 
 	D3D12_ROOT_PARAMETER rootParam[4] = {};
@@ -1032,24 +1086,54 @@ Dx12Wrapper::Update() {
 void Dx12Wrapper::PreDrawRenderTarget1()
 {
 	//バリア設定
+	for (auto& pera : _peraResource)
+	{
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			pera.Get(),
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET
+		);
+		_cmdList->ResourceBarrier(1, &barrier);
+	}
 	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		_peraResource.Get(),
+		_bloomBuffer[0].Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET
 	);
 	_cmdList->ResourceBarrier(1, &barrier);
 
-	//1枚目のペラポリゴンをレンダーターゲットに指定
-	auto rtvHeapPointer = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
+	CD3DX12_CPU_DESCRIPTOR_HANDLE handles[3];
+	D3D12_CPU_DESCRIPTOR_HANDLE baseHandle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
+	auto incSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+	uint32_t offset = 0;
+	for (auto& handle : handles)
+	{
+		handle.InitOffsetted(baseHandle, offset);
+		offset += incSize;
+	}
+
+	////1枚目のペラポリゴンをレンダーターゲットに指定
+	//auto rtvHeapPointer = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
+	//rtvHeapPointer.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);	//先に２枚目のハンドルを用意する
+
+	//D3D12_CPU_DESCRIPTOR_HANDLE rtvs[2] = {
+	//	_peraRTVHeap->GetCPUDescriptorHandleForHeapStart(),
+	//	rtvHeapPointer
+	//};
+
 	//深度を指定
 	auto dsvH = _dsvHeap->GetCPUDescriptorHandleForHeapStart();
 	//1パス目のレンダーターゲットセット
 	//正面からの深度セット
-	_cmdList->OMSetRenderTargets(1, &rtvHeapPointer, false, &dsvH);	//深度値が書き込まれるようになる
+	_cmdList->OMSetRenderTargets(_countof(handles), handles, false, &dsvH);	//深度値が書き込まれるようになる
 
 	//画面クリア
 	float clearColor[] = { 0.5f,0.5f,0.5f,1.0f };//白色
-	_cmdList->ClearRenderTargetView(rtvHeapPointer, clearColor, 0, nullptr);
+	for (auto& rtv : handles)
+	{
+		_cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+	}
 	//深度クリア
 	_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
@@ -1076,8 +1160,17 @@ void Dx12Wrapper::DrawRenderTarget1(std::shared_ptr<PMDRenderer>& renderer)
 void Dx12Wrapper::EndDrawRenderTarget1()
 {
 	//バリア設定
+	for (auto& pera : _peraResource)
+	{
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			pera.Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+		);
+		_cmdList->ResourceBarrier(1, &barrier);
+	}
 	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		_peraResource.Get(),
+		_bloomBuffer[0].Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);

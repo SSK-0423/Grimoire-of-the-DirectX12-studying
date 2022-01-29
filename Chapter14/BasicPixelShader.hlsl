@@ -1,6 +1,6 @@
 #include"BasicType.hlsli"
 
-float4 BasicPS(BasicType input) : SV_TARGET
+PixelOutput BasicPS(BasicType input)
 {
     float3 light = normalize(float3(1, -1, 1)); //光の向かうベクトル(平行光線)
     float3 lightColor = float3(1, 1, 1); //ライトのカラー(1,1,1で真っ白)
@@ -20,9 +20,9 @@ float4 BasicPS(BasicType input) : SV_TARGET
 	//テクスチャカラー
     float4 texColor = tex.Sample(smp, input.uv);
     //シャドウマップ無しの色
-    float4 ret = saturate(toonDif * diffuse * texColor * sph.Sample(smp, sphereMapUV))
-		+ saturate(spa.Sample(smp, sphereMapUV) * texColor
-		+ float4(specularB * specular.rgb, 1))
+    float4 ret = toonDif * diffuse * texColor * sph.Sample(smp, sphereMapUV)
+		+ spa.Sample(smp, sphereMapUV) * texColor
+		+ float4(specularB * specular.rgb, 1)
 		+ float4(texColor.rgb * ambient * 0.5, 1);
 	
 	//
@@ -41,10 +41,6 @@ float4 BasicPS(BasicType input) : SV_TARGET
     //if (depthFromLight < posFromLightVP.z - 0.001f)
     //    shadowWeight = 0.5f;
 	
-    if (input.instNo == 1)
-    {
-        return float4(0, 0, 0, 1);
-    }
 	/*
 		どうやら、ライトから見たときの深度が取得できてないっぽい
 		peraShaderのlightDepthを表示すると、しっかり取得できているので、
@@ -56,15 +52,26 @@ float4 BasicPS(BasicType input) : SV_TARGET
 		シャドウパス(ライトデプス初期化)→1パス目(正面デプス初期化)→2パス目(1パス目からのテクスチャ表示)
 	*/
 	
-    return float4(ret.rgb * shadowWeight, ret.a);
-    return float4(depthFromLight, depthFromLight, depthFromLight, 1);
-    return saturate(toonDif //輝度(トゥーン)
-		* diffuse //ディフューズ色
-		* texColor //テクスチャカラー
-		* sph.Sample(smp, sphereMapUV)) //スフィアマップ(乗算)
-		+ saturate(spa.Sample(smp, sphereMapUV) * texColor //スフィアマップ(加算)
-		+ float4(specularB * specular.rgb, 1)) //スペキュラー
-		+ float4(texColor * ambient * 0.5, 1); //アンビエント(明るくなりすぎるので0.5にしてます)
+	PixelOutput output;
+	output.col = float4(ret.rgb * shadowWeight, ret.a);
+    if (input.instNo == 1)
+    {
+        output.col = float4(0, 0, 0, 1);
+    }
+	output.normal.rgb = float3((input.normal.xyz + 1.f) / 2.f);
+	output.normal.a = 1;
+	output.highLum = (ret > 1.f);
+	return output;
 
-    return float4(shadowWeight, shadowWeight, shadowWeight, 1);
+  //  return float4(ret.rgb * shadowWeight, ret.a);
+  //  return float4(depthFromLight, depthFromLight, depthFromLight, 1);
+  //  return saturate(toonDif //輝度(トゥーン)
+		//* diffuse //ディフューズ色
+		//* texColor //テクスチャカラー
+		//* sph.Sample(smp, sphereMapUV)) //スフィアマップ(乗算)
+		//+ saturate(spa.Sample(smp, sphereMapUV) * texColor //スフィアマップ(加算)
+		//+ float4(specularB * specular.rgb, 1)) //スペキュラー
+		//+ float4(texColor * ambient * 0.5, 1); //アンビエント(明るくなりすぎるので0.5にしてます)
+
+  //  return float4(shadowWeight, shadowWeight, shadowWeight, 1);
 }

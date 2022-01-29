@@ -196,8 +196,10 @@ PMDRenderer::CreateGraphicsPipelineForPMD() {
 	gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;//ストリップ時のカットなし
 	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;//三角形で構成
 
-	gpipeline.NumRenderTargets = 1;//今は１つのみ
+	gpipeline.NumRenderTargets = 3;//通常カラー、法線、高輝度
 	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
+	gpipeline.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
+	gpipeline.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
 
 	gpipeline.SampleDesc.Count = 1;//サンプリングは1ピクセルにつき１
 	gpipeline.SampleDesc.Quality = 0;//クオリティは最低
@@ -218,6 +220,8 @@ PMDRenderer::CreateGraphicsPipelineForPMD() {
 	gpipeline.PS.pShaderBytecode = nullptr;
 	gpipeline.NumRenderTargets = 0;
 	gpipeline.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+	gpipeline.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;	//一度セットしたレンダーターゲット全てのフォーマットを変える必要がある
+	gpipeline.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;	//一度セットしたレンダーターゲット全てのフォーマットを変える必要がある
 	
 	result = _dx12.Device()->CreateGraphicsPipelineState(&gpipeline, IID_PPV_ARGS(_shadowPipeline.ReleaseAndGetAddressOf()));
 	if (FAILED(result)) {

@@ -8,6 +8,7 @@
 #include<wrl.h>
 #include<string>
 #include<functional>
+#include<array>
 
 class PMDRenderer;
 
@@ -83,7 +84,7 @@ class Dx12Wrapper
 
 	//1枚目のレンダリング結果
 	//ペラポリゴン
-	ComPtr<ID3D12Resource> _peraResource = nullptr;
+	std::array<ComPtr<ID3D12Resource>,2> _peraResource;
 	ComPtr<ID3D12Resource> _peraResource2 = nullptr;
 	ComPtr<ID3D12DescriptorHeap> _peraRTVHeap = nullptr;	//レンダーターゲット用
 	ComPtr<ID3D12DescriptorHeap> _peraSRVHeap = nullptr;	//テクスチャ用
@@ -135,6 +136,11 @@ class Dx12Wrapper
 	ComPtr<ID3D12DescriptorHeap> _effectSRVHeap = nullptr;
 	ComPtr<ID3D12Resource> _effectTexBuffer = nullptr;
 	HRESULT CreateEffectBufferAndView();
+
+	//ブルーム
+	std::array<ComPtr<ID3D12Resource>, 2> _bloomBuffer;	//ブルーム用バッファー
+	ComPtr<ID3D12DescriptorHeap> _bloomHeap = nullptr;
+	HRESULT CreateBloomBufferAndView();
 
 public:
 	Dx12Wrapper(HWND hwnd);

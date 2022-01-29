@@ -114,7 +114,7 @@ Application::Init() {
 	//DirectX12ラッパー生成＆初期化
 	_dx12.reset(new Dx12Wrapper(_hwnd));
 	_pmdRenderer.reset(new PMDRenderer(*_dx12));
-	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
+	_pmdActor.reset(new PMDActor("Model/鏡音リン.pmd", *_pmdRenderer));
 	_pmdActor->PlayAnimation();
 	return true;
 }
