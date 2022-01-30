@@ -141,6 +141,8 @@ class Dx12Wrapper
 	std::array<ComPtr<ID3D12Resource>, 2> _bloomBuffer;	//ブルーム用バッファー
 	ComPtr<ID3D12DescriptorHeap> _bloomHeap = nullptr;
 	HRESULT CreateBloomBufferAndView();
+	//画面全体ぼかし用パイプライン
+	ComPtr<ID3D12PipelineState> _blurPipeline;
 
 public:
 	Dx12Wrapper(HWND hwnd);
@@ -164,6 +166,9 @@ public:
 	void PreDrawFinalRenderTarget();
 	//最終レンダリング結果描画
 	void DrawFinalRenderTarget();
+	//縮小バッファーへの書き込み
+	void DrawShrinkTextureForBlur();
+
 
 	void EndDraw();
 	void BeginDraw();

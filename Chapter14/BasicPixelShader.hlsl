@@ -60,7 +60,8 @@ PixelOutput BasicPS(BasicType input)
     }
 	output.normal.rgb = float3((input.normal.xyz + 1.f) / 2.f);
 	output.normal.a = 1;
-	output.highLum = (ret > 1.f);
+	//—á: ret(1.5f,0.5f,0.8f,1.f) > 1.f ¨ highLum(1.f,0.f,0.f,1.f)
+    output.highLum = (float4(1.5f, 0.1f, 0.2f, 1.f) >= 1.f); //‚±‚ÌŒ‹‰Ê‚ª_bloomBuffer[0]‚É‘‚«‚Ü‚ê‚é,‚Í‚¸
 	return output;
 
   //  return float4(ret.rgb * shadowWeight, ret.a);

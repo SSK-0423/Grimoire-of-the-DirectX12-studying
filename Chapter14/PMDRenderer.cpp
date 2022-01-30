@@ -196,6 +196,7 @@ PMDRenderer::CreateGraphicsPipelineForPMD() {
 	gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;//ストリップ時のカットなし
 	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;//三角形で構成
 
+	//マルチレンダーターゲットであることを指定する
 	gpipeline.NumRenderTargets = 3;//通常カラー、法線、高輝度
 	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
 	gpipeline.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
