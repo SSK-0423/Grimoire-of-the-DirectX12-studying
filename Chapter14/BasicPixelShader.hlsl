@@ -19,11 +19,20 @@ PixelOutput BasicPS(BasicType input)
 
 	//テクスチャカラー
     float4 texColor = tex.Sample(smp, input.uv);
-    //シャドウマップ無しの色
-    float4 ret = toonDif * diffuse * texColor * sph.Sample(smp, sphereMapUV)
-		+ spa.Sample(smp, sphereMapUV) * texColor
-		+ float4(specularB * specular.rgb, 1)
-		+ float4(texColor.rgb * ambient * 0.5, 1);
+	
+	//乗算スフィア
+    float4 sphCol = sph.Sample(smp, sphereMapUV);
+	//加算スフィア
+    float4 spaCol = spa.Sample(smp, sphereMapUV);
+	
+    float4 ret = float4((spaCol + sphCol * texColor * toonDif * diffuse).rgb, diffuse.a)
+		+ float4(specular.rgb * specularB, 1);
+	
+  //  //シャドウマップ無しの色
+  //  float4 ret = toonDif * diffuse * texColor * sph.Sample(smp, sphereMapUV)
+		//+ spa.Sample(smp, sphereMapUV) * texColor
+		//+ float4(specularB * specular.rgb, 1)
+		//+ float4(texColor.rgb * ambient * 0.5, 1);
 	
 	//
     float3 posFromLightVP = input.tpos.xyz / input.tpos.w;
@@ -52,6 +61,7 @@ PixelOutput BasicPS(BasicType input)
 		シャドウパス(ライトデプス初期化)→1パス目(正面デプス初期化)→2パス目(1パス目からのテクスチャ表示)
 	*/
 	
+	
 	PixelOutput output;
 	output.col = float4(ret.rgb * shadowWeight, ret.a);
     if (input.instNo == 1)
@@ -61,18 +71,21 @@ PixelOutput BasicPS(BasicType input)
 	output.normal.rgb = float3((input.normal.xyz + 1.f) / 2.f);
 	output.normal.a = 1;
 	//例: ret(1.5f,0.5f,0.8f,1.f) > 1.f → highLum(1.f,0.f,0.f,1.f)
-    output.highLum = (float4(1.5f, 0.1f, 0.2f, 1.f) >= 1.f); //この結果が_bloomBuffer[0]に書き込まれる,はず
+    //output.highLum = (float4(1.5f, 0.1f, 0.2f, 1.f) >= 1.f); //この結果が_bloomBuffer[0]に書き込まれる,はず
+    
+    float y = dot(float3(0.299f, 0.587f, 0.114f), output.col.rgb);
+    output.highLum = y > 0.99f ? output.col : 0.f;
 	return output;
-
-  //  return float4(ret.rgb * shadowWeight, ret.a);
-  //  return float4(depthFromLight, depthFromLight, depthFromLight, 1);
-  //  return saturate(toonDif //輝度(トゥーン)
+  //  ret = saturate(toonDif //輝度(トゥーン)
 		//* diffuse //ディフューズ色
 		//* texColor //テクスチャカラー
 		//* sph.Sample(smp, sphereMapUV)) //スフィアマップ(乗算)
 		//+ saturate(spa.Sample(smp, sphereMapUV) * texColor //スフィアマップ(加算)
 		//+ float4(specularB * specular.rgb, 1)) //スペキュラー
 		//+ float4(texColor * ambient * 0.5, 1); //アンビエント(明るくなりすぎるので0.5にしてます)
+
+  //  return float4(ret.rgb * shadowWeight, ret.a);
+  //  return float4(depthFromLight, depthFromLight, depthFromLight, 1);
 
   //  return float4(shadowWeight, shadowWeight, shadowWeight, 1);
 }

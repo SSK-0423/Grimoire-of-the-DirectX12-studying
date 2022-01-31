@@ -92,7 +92,7 @@ Application::Run() {
 			_dx12->PreDrawRenderTarget1();
 			_dx12->SetScene();
 			_pmdActor->Draw(false);
-			//_dx12->DrawShrinkTextureForBlur();
+			_dx12->DrawShrinkTextureForBlur();
 			_dx12->EndDrawRenderTarget1();
 		}
 		//2パス目の結果をテクスチャとして受け取って表示

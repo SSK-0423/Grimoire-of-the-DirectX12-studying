@@ -545,7 +545,7 @@ HRESULT Dx12Wrapper::CreateGaussianConstantBufferAndView()
 
 	//CreatePeraResourceAndViewメソッドを変更した際は注意
 	auto handle = _peraSRVHeap->GetCPUDescriptorHandleForHeapStart();
-	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2;
+	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 	_dev->CreateConstantBufferView(&cbv, handle);
 
 	return result;
@@ -822,8 +822,8 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 		_peraResource2.Get(), &rtvDesc, handle);
 
 	//SRV用ヒープを作る
-	//1～4ペラポリゴン1用 5ペラポリゴン2用
-	heapDesc.NumDescriptors = 5;	//ガウスパラメーターとシェーダー2つ
+	//1～4ペラポリゴン1用 5ペラポリゴン2用 + ガウスぼかし
+	heapDesc.NumDescriptors = 6;	//ガウスパラメーターとシェーダー2つ
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -1187,12 +1187,12 @@ void Dx12Wrapper::EndDrawRenderTarget1()
 		);
 		_cmdList->ResourceBarrier(1, &barrier);
 	}
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		_bloomBuffer[0].Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	);
-	_cmdList->ResourceBarrier(1, &barrier);
+	//auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+	//	_bloomBuffer[0].Get(),
+	//	D3D12_RESOURCE_STATE_RENDER_TARGET,
+	//	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	//);
+	//_cmdList->ResourceBarrier(1, &barrier);
 }
 
 //ペラポリゴン2枚目描画準備
@@ -1304,10 +1304,11 @@ void Dx12Wrapper::DrawFinalRenderTarget()
 	_cmdList->SetDescriptorHeaps(1, _peraSRVHeap.GetAddressOf());
 	auto handle = _peraSRVHeap->GetGPUDescriptorHandleForHeapStart();
 
+	//これで前パスのレンダリング結果をテクスチャとして利用できる(シェーダーに渡される)
 	_cmdList->SetGraphicsRootDescriptorTable(0, handle);
 
 	//コンスタントバッファ―のディスクリプタ紐づけ
-	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 	_cmdList->SetGraphicsRootDescriptorTable(1, handle);
 
 	//エフェクト用テクスチャ
@@ -1341,12 +1342,12 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	_cmdList->ResourceBarrier(1, &barrier);
 
 	//縮小バッファーはレンダーターゲットに
-	auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 		_bloomBuffer[1].Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET
 	);
-	_cmdList->ResourceBarrier(1, &barrier2);
+	_cmdList->ResourceBarrier(1, &barrier);
 
 	auto rtvHandle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
 	auto srvHandle = _peraSRVHeap->GetGPUDescriptorHandleForHeapStart();
@@ -1376,31 +1377,31 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	sr.right = vp.Width;
 	sr.bottom = vp.Height;
 
-	//for (int i = 0; i < 8; i++)
-	//{
-	//	_cmdList->RSSetViewports(1, &vp);
-	//	_cmdList->RSSetScissorRects(1, &sr);
-	//	_cmdList->DrawInstanced(4, 1, 0, 0);
+	for (int i = 0; i < 8; ++i)
+	{
+		_cmdList->RSSetViewports(1, &vp);
+		_cmdList->RSSetScissorRects(1, &sr);
+		_cmdList->DrawInstanced(4, 1, 0, 0);
 
-	//	//書いたら下にずらして次を書く準備
-	//	sr.top += vp.Height;
-	//	vp.TopLeftX = 0;
-	//	vp.TopLeftY = sr.top;
+		//書いたら下にずらして次を書く準備
+		sr.top += vp.Height;
+		vp.TopLeftX = 0;
+		vp.TopLeftY = sr.top;
 
-	//	//幅も高さも半分に
-	//	vp.Width /= 2;
-	//	vp.Height /= 2;
-	//	sr.bottom = sr.top + vp.Height;
-	//}
+		//幅も高さも半分に
+		vp.Width /= 2;
+		vp.Height /= 2;
+		sr.bottom = sr.top + vp.Height;
+	}
 
 	//高輝度成分バッファーはシェーダーリソースに
 	//縮小バッファーをシェーダーリソースに
-	barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 		_bloomBuffer[1].Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);
-	_cmdList->ResourceBarrier(1, &barrier2);
+	_cmdList->ResourceBarrier(1, &barrier);
 }
 
 //シャドウ描画準備

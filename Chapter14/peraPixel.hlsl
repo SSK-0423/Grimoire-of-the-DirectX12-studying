@@ -235,10 +235,12 @@ float4 ps(Output input) : SV_TARGET
     }
     
     float4 highLum = texHighLum.Sample(smp, input.uv);
-    return highLum;
+    return tex.Sample(smp, input.uv) 
+        + Get5x5GaussianBlur(
+               texHighLum, smp, input.uv, dx, dy, float4(0,0,0,0))
+        +saturate(bloomAccum);
     
     return tex.Sample(smp, input.uv);
-    return tex.Sample(smp, input.uv) + simpleGaussianBlur(texHighLum, input) + saturate(bloomAccum);
     
 	return float4(tex.Sample(smp, input.uv));
     return effectTex.Sample(smp, input.uv);
