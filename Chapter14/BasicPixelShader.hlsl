@@ -75,6 +75,7 @@ PixelOutput BasicPS(BasicType input)
     
     float y = dot(float3(0.299f, 0.587f, 0.114f), output.col.rgb);
     output.highLum = y > 0.99f ? output.col : 0.f;
+    //output.highLum = (ret > 1.f);
 	return output;
   //  ret = saturate(toonDif //輝度(トゥーン)
 		//* diffuse //ディフューズ色

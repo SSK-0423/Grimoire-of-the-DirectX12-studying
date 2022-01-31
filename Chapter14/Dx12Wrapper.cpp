@@ -133,7 +133,7 @@ HRESULT Dx12Wrapper::CreateBloomBufferAndView()
 	auto resDesc = bbuff->GetDesc();
 	D3D12_HEAP_PROPERTIES heapPrpp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	D3D12_CLEAR_VALUE clearValue = {};
-	clearValue.Color[0] = clearValue.Color[1] = clearValue.Color[2] = 0.5f;
+	clearValue.Color[0] = clearValue.Color[1] = clearValue.Color[2] = 0.f;
 	clearValue.Color[3] = 1.f;
 	clearValue.Format = resDesc.Format;
 	HRESULT result = S_OK;
@@ -752,6 +752,7 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	D3D12_HEAP_PROPERTIES heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	//レンダリング時のクリア値と同じ値
 	float clsClr[] = { 0.5f,0.5f,0.5f,1.0f };//白色
+	//float clsClr[] = { 0.f,0.f,0.f,1.0f };//白色
 	D3D12_CLEAR_VALUE clearValue = CD3DX12_CLEAR_VALUE(DXGI_FORMAT_R8G8B8A8_UNORM, clsClr);
 
 	//1パス目はマルチレンダーターゲット
@@ -812,6 +813,7 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	_dev->CreateRenderTargetView(
 		_bloomBuffer[0].Get(), &rtvDesc, handle);
 	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	
 	//4枚目(縮小バッファー)
 	_dev->CreateRenderTargetView(
 		_bloomBuffer[1].Get(), &rtvDesc, handle);
@@ -1148,9 +1150,15 @@ void Dx12Wrapper::PreDrawRenderTarget1()
 
 	//画面クリア
 	float clearColor[] = { 0.5f,0.5f,0.5f,1.0f };//白色
-	for (auto& rtv : handles)
+	for (size_t i = 0; i < _countof(handles); i++)
 	{
-		_cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+		//高輝度の場合
+		if (i == 2) {
+			float clearColor[] = { 0.f,0.f,0.f,1.f };
+			_cmdList->ClearRenderTargetView(handles[i], clearColor, 0, nullptr);
+			continue;
+		 }
+		_cmdList->ClearRenderTargetView(handles[i], clearColor, 0, nullptr);
 	}
 	//深度クリア
 	_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
@@ -1187,12 +1195,12 @@ void Dx12Wrapper::EndDrawRenderTarget1()
 		);
 		_cmdList->ResourceBarrier(1, &barrier);
 	}
-	//auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-	//	_bloomBuffer[0].Get(),
-	//	D3D12_RESOURCE_STATE_RENDER_TARGET,
-	//	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	//);
-	//_cmdList->ResourceBarrier(1, &barrier);
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		_bloomBuffer[0].Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+	_cmdList->ResourceBarrier(1, &barrier);
 }
 
 //ペラポリゴン2枚目描画準備
@@ -1289,7 +1297,9 @@ void Dx12Wrapper::PreDrawFinalRenderTarget()
 	//画面クリア
 	float clearColor[] = { 0.5f,0.5f,0.5f,1.0f };//白色
 	_cmdList->ClearRenderTargetView(rtvHeapPointer, clearColor, 0, nullptr);
-
+	//ビューポート、シザー矩形のセット
+	_cmdList->RSSetViewports(1, _viewport.get());
+	_cmdList->RSSetScissorRects(1, _scissorrect.get());
 	//最終レンダリング用のパイプラインセット
 	_cmdList->SetPipelineState(_peraPipeline.Get());
 	_cmdList->SetGraphicsRootSignature(_peraRootSignature.Get());
@@ -1333,16 +1343,8 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	_cmdList->IASetVertexBuffers(0, 1, &_peraVBV);
 
-	//高輝度成分バッファーはシェーダーリソースに
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		_bloomBuffer[0].Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	);
-	_cmdList->ResourceBarrier(1, &barrier);
-
 	//縮小バッファーはレンダーターゲットに
-	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 		_bloomBuffer[1].Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET
@@ -1361,6 +1363,7 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	srvHandle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2;
 
 	//1パス目の高輝度をテクスチャとして使用
+	//シェーダー側でtexHighLumを使用する
 	_cmdList->SetDescriptorHeaps(1, _peraSRVHeap.GetAddressOf());
 	_cmdList->SetGraphicsRootDescriptorTable(0, srvHandle);
 
@@ -1377,6 +1380,8 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	sr.right = vp.Width;
 	sr.bottom = vp.Height;
 
+	//ここでビューポート、シザー矩形を変更しているので、
+	//最終レンダリング前に再設定必要あり←ハマった
 	for (int i = 0; i < 8; ++i)
 	{
 		_cmdList->RSSetViewports(1, &vp);

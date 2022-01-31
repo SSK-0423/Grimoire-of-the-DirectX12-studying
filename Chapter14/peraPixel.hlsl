@@ -126,6 +126,8 @@ float4 Get5x5GaussianBlur(Texture2D<float4> tex, SamplerState smp, float2 uv, fl
 float4 BlurPS(Output input) : SV_TARGET
 {
     float w, h, miplevels;
+    //texHighLum.GetDimensions(0, w, h, miplevels);
+    //return simpleGaussianBlur(texHighLum, input);
     tex.GetDimensions(0, w, h, miplevels);
     return simpleGaussianBlur(tex, input);
 }
@@ -235,10 +237,12 @@ float4 ps(Output input) : SV_TARGET
     }
     
     float4 highLum = texHighLum.Sample(smp, input.uv);
-    return tex.Sample(smp, input.uv) 
-        + Get5x5GaussianBlur(
-               texHighLum, smp, input.uv, dx, dy, float4(0,0,0,0))
-        +saturate(bloomAccum);
+    return tex.Sample(smp, input.uv)
+        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 1, 1))
+        + saturate(bloomAccum);
+    
+    return Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 1, 1));
+    return highLum;
     
     return tex.Sample(smp, input.uv);
     

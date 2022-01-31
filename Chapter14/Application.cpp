@@ -92,8 +92,8 @@ Application::Run() {
 			_dx12->PreDrawRenderTarget1();
 			_dx12->SetScene();
 			_pmdActor->Draw(false);
-			_dx12->DrawShrinkTextureForBlur();
 			_dx12->EndDrawRenderTarget1();
+			_dx12->DrawShrinkTextureForBlur();
 		}
 		//2パス目の結果をテクスチャとして受け取って表示
 		{
@@ -116,7 +116,7 @@ Application::Init() {
 	_dx12.reset(new Dx12Wrapper(_hwnd));
 	_pmdRenderer.reset(new PMDRenderer(*_dx12));
 	_pmdActor.reset(new PMDActor("Model/鏡音リン.pmd", *_pmdRenderer));
-	//_pmdActor->PlayAnimation();
+	_pmdActor->PlayAnimation();
 	return true;
 }
 
