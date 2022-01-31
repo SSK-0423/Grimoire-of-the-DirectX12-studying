@@ -123,13 +123,18 @@ float4 Get5x5GaussianBlur(Texture2D<float4> tex, SamplerState smp, float2 uv, fl
 }
 
 //メインテクスチャを5x5ガウスでぼかすピクセルシェーダー
-float4 BlurPS(Output input) : SV_TARGET
+BlurOutput BlurPS(Output input)
 {
     float w, h, miplevels;
-    //texHighLum.GetDimensions(0, w, h, miplevels);
-    //return simpleGaussianBlur(texHighLum, input);
     tex.GetDimensions(0, w, h, miplevels);
-    return simpleGaussianBlur(tex, input);
+    float dx = 1.f / w;
+    float dy = 1.f / h;
+    BlurOutput ret;
+    //被写界深度(通常テクスチャをぼかす)
+    ret.col = Get5x5GaussianBlur(tex, smp, input.uv, dx, dy, float4(0, 0, 0, 1));
+    //ブルーム(高輝度テクスチャをぼかす)
+    ret.highLum = Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1));
+    return ret;
 }
 
 float4 GaussianBlurX(Output output)
@@ -236,9 +241,53 @@ float4 ps(Output input) : SV_TARGET
         uvSize *= 0.5f;
     }
     
+    //画面真ん中からの深度の差を測る
+    float depthDiff = abs(depthTex.Sample(smp, float2(0.5f, 0.5f)) - depthTex.Sample(smp, input.uv));
+    //近い値でも変化が出るように
+    depthDiff = pow(depthDiff, 0.5f);   
+    //サイズ初期化
+    uvSize = float2(1, 0.5);
+    uvOfst = float2(0, 0);
+    
+    float t = depthDiff * 8;
+    float no;
+    t = modf(t, no);
+    
+    float4 retColor[2];
+    
+    retColor[0] = tex.Sample(smp, input.uv);
+    if (no == 0.f)
+    {
+        retColor[1] = Get5x5GaussianBlur(
+            texDof, smp, input.uv * uvSize + uvOfst, dx, dy, float4(uvOfst,uvOfst + uvSize));
+    }
+    else
+    {
+        for (int i = 1; i <= 8; i++)
+        {
+            if (i - no < 0)
+            {
+                continue;
+            }
+            
+            retColor[i - no] = Get5x5GaussianBlur(
+                texDof, smp, input.uv * uvSize + uvOfst, dx, dy, float4(uvOfst, uvOfst + uvSize));
+            uvOfst.y += uvSize.y;
+            uvSize *= 0.5f;
+            if(i - no > 1)
+            {
+                break;
+            }
+        }
+
+    }
+    
+    
     float4 highLum = texHighLum.Sample(smp, input.uv);
+    //return lerp(retColor[0], retColor[1], t);
+    
     return tex.Sample(smp, input.uv)
-        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 1, 1))
+        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
         + saturate(bloomAccum);
     
     return Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 1, 1));

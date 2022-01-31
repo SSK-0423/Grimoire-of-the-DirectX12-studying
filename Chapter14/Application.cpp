@@ -81,8 +81,11 @@ Application::Run() {
 		{
 			_dx12->PreDrawShadow();
 			_dx12->SetScene();
-			_pmdActor->Update();
-			_pmdActor->Draw(true);
+			for (auto& pmd : _pmdActors)
+			{
+				pmd->Update();
+				pmd->Draw(true);
+			}
 			_dx12->EndDrawShadow();	//今は何もしない
 		}
 		//通常描画
@@ -91,7 +94,10 @@ Application::Run() {
 			_pmdRenderer->BeforeDraw();	// pipeline rootsignature
 			_dx12->PreDrawRenderTarget1();
 			_dx12->SetScene();
-			_pmdActor->Draw(false);
+			for (auto& pmd : _pmdActors)
+			{
+				pmd->Draw(false);
+			}
 			_dx12->EndDrawRenderTarget1();
 			_dx12->DrawShrinkTextureForBlur();
 		}
@@ -115,8 +121,20 @@ Application::Init() {
 	//DirectX12ラッパー生成＆初期化
 	_dx12.reset(new Dx12Wrapper(_hwnd));
 	_pmdRenderer.reset(new PMDRenderer(*_dx12));
+
 	_pmdActor.reset(new PMDActor("Model/鏡音リン.pmd", *_pmdRenderer));
-	_pmdActor->PlayAnimation();
+	_pmdActor->Move(0, 0, 0);
+	_pmdActor2.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
+	_pmdActor2->Move(10, 0, 10);
+
+	_pmdActors.resize(3);
+	_pmdActors[0].reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
+	_pmdActors[0]->Move(0, 0, 0);
+	_pmdActors[1].reset(new PMDActor("Model/鏡音リン.pmd", *_pmdRenderer));
+	_pmdActors[1]->Move(10, 0, 10);
+	_pmdActors[2].reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
+	_pmdActors[2]->Move(-10, 0, 10);
+	//_pmdActor->PlayAnimation();
 	return true;
 }
 

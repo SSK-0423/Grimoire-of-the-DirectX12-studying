@@ -134,6 +134,7 @@ public:
 	void Update();
 	void Draw(bool isShadow);
 	void PlayAnimation();
+	void Move(float x, float y, float z);
 
 };
 

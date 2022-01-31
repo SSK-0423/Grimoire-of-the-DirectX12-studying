@@ -156,6 +156,27 @@ HRESULT Dx12Wrapper::CreateBloomBufferAndView()
 	}
 	return result;
 }
+HRESULT Dx12Wrapper::CreateDofBuffer()
+{
+	auto& bbuff = _backBuffers[0];
+	auto resDesc = bbuff->GetDesc();
+	D3D12_HEAP_PROPERTIES heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	D3D12_CLEAR_VALUE clearValue = {};
+	clearValue.Color[0] = clearValue.Color[1] = clearValue.Color[2] = 0.5f;
+	clearValue.Color[3] = 1.f;
+	clearValue.Format = resDesc.Format;
+	resDesc.Width >>= 1;	//縮小バッファーなので大きさを半分にする
+	auto result = _dev->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		&clearValue,
+		IID_PPV_ARGS(_dofBuffer.ReleaseAndGetAddressOf())
+	);
+
+	return result;
+}
 Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 #ifdef _DEBUG
 	//デバッグレイヤーをオンに
@@ -190,11 +211,20 @@ Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 		assert(0);
 		return;
 	}
+
+	//ブルームのバッファー生成
 	if (FAILED(CreateBloomBufferAndView()))
 	{
 		assert(0);
 		return;
 	}
+	//被写界深度のバッファー生成
+	if (FAILED(CreateDofBuffer()))
+	{
+		assert(0);
+		return;
+	}
+
 	if (FAILED(CreatePeraResourceAndView())) {
 		assert(0);
 		return;
@@ -545,7 +575,7 @@ HRESULT Dx12Wrapper::CreateGaussianConstantBufferAndView()
 
 	//CreatePeraResourceAndViewメソッドを変更した際は注意
 	auto handle = _peraSRVHeap->GetCPUDescriptorHandleForHeapStart();
-	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
+	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 6;
 	_dev->CreateConstantBufferView(&cbv, handle);
 
 	return result;
@@ -792,7 +822,7 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 
 	//RTV用ヒープを作る
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = _rtvHeaps->GetDesc();
-	heapDesc.NumDescriptors = 5;	//1パス目(4枚) 2パス目(1枚)
+	heapDesc.NumDescriptors = 6;	//1パス目(4枚) 2パス目(1枚)
 	result = _dev->CreateDescriptorHeap(
 		&heapDesc, IID_PPV_ARGS(_peraRTVHeap.ReleaseAndGetAddressOf()));
 
@@ -818,14 +848,18 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	_dev->CreateRenderTargetView(
 		_bloomBuffer[1].Get(), &rtvDesc, handle);
 	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	//5枚目(被写界深度)
+	_dev->CreateRenderTargetView(
+		_dofBuffer.Get(), &rtvDesc, handle);
+	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	//5枚目
+	//6枚目
 	_dev->CreateRenderTargetView(
 		_peraResource2.Get(), &rtvDesc, handle);
 
 	//SRV用ヒープを作る
-	//1～4ペラポリゴン1用 5ペラポリゴン2用 + ガウスぼかし
-	heapDesc.NumDescriptors = 6;	//ガウスパラメーターとシェーダー2つ
+	//1～5ペラポリゴン1用 6ペラポリゴン2用 + ガウスぼかし
+	heapDesc.NumDescriptors = 7;
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -860,8 +894,11 @@ HRESULT Dx12Wrapper::CreatePeraResourceAndView()
 	_dev->CreateShaderResourceView(
 		_bloomBuffer[1].Get(), &srvDesc, handle);
 	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	//2パス目(5枚目)
+	//5枚目(被写界深度用縮小バッファー)
+	_dev->CreateShaderResourceView(
+		_dofBuffer.Get(), &srvDesc, handle);
+	handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	//2パス目(6枚目)
 	_dev->CreateShaderResourceView(
 		_peraResource2.Get(), &srvDesc, handle);
 
@@ -945,8 +982,8 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	D3D12_DESCRIPTOR_RANGE range[4] = {};
 	//前パスのレンダリング結果
 	range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
-	range[0].BaseShaderRegister = 0;	// t0～t3
-	range[0].NumDescriptors = 4; //マルチレンダーターゲット(3枚)なので3
+	range[0].BaseShaderRegister = 0;	// t0～t4
+	range[0].NumDescriptors = 5; //マルチレンダーターゲット(3枚)なので3
 
 	//エフェクト用バッファー
 	range[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;	// b
@@ -955,12 +992,12 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 
 	//エフェクト用のテクスチャ
 	range[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
-	range[2].BaseShaderRegister = 4;	// 1
+	range[2].BaseShaderRegister = 5;	// 1
 	range[2].NumDescriptors = 1;
 	
 	//深度表示用テクスチャ
 	range[3].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
-	range[3].BaseShaderRegister = 5;	//2
+	range[3].BaseShaderRegister = 6;	//2
 	range[3].NumDescriptors = 2;	// 使うのは1個
 
 	D3D12_ROOT_PARAMETER rootParam[4] = {};
@@ -1047,6 +1084,10 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 		return result;
 	}
 	gpsDesc.PS = CD3DX12_SHADER_BYTECODE(ps.Get());
+	//ブルーム縮小と被写界深度縮小
+	gpsDesc.NumRenderTargets = 2;
+	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	gpsDesc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	result = _dev->CreateGraphicsPipelineState(&gpsDesc, IID_PPV_ARGS(_blurPipeline.ReleaseAndGetAddressOf()));
 	if (FAILED(result))
 	{
@@ -1351,16 +1392,20 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	);
 	_cmdList->ResourceBarrier(1, &barrier);
 
-	auto rtvHandle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
 	auto srvHandle = _peraSRVHeap->GetGPUDescriptorHandleForHeapStart();
+	auto rtvBaseHandle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
+	auto rtvIncSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-	//４つ目に移動(縮小バッファー)
-	rtvHandle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) * 3;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandles[2] = {};
+	//4つ目に移動(ブルーム縮小バッファー)
+	rtvHandles[0].InitOffsetted(rtvBaseHandle, rtvIncSize * 3);
+	//5つ目に移動(被写界深度縮小バッファー)
+	rtvHandles[1].InitOffsetted(rtvBaseHandle, rtvIncSize * 4);
 	//レンダーターゲットセット
-	_cmdList->OMSetRenderTargets(1, &rtvHandle, false, nullptr);
+	_cmdList->OMSetRenderTargets(2, rtvHandles, false, nullptr);
 
 	//テクスチャは1枚目の3つ目のレンダーターゲット(高輝度)
-	srvHandle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2;
+	//srvHandle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2;
 
 	//1パス目の高輝度をテクスチャとして使用
 	//シェーダー側でtexHighLumを使用する

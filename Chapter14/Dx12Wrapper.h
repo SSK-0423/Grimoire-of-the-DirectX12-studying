@@ -143,6 +143,9 @@ class Dx12Wrapper
 	HRESULT CreateBloomBufferAndView();
 	//画面全体ぼかし用パイプライン
 	ComPtr<ID3D12PipelineState> _blurPipeline;
+	//被写界深度用ぼかしバッファー
+	ComPtr<ID3D12Resource> _dofBuffer;
+	HRESULT CreateDofBuffer();
 
 public:
 	Dx12Wrapper(HWND hwnd);

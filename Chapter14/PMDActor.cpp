@@ -696,7 +696,8 @@ void
 PMDActor::Update() {
 	//_angle += 0.03f;
 	//_mappedTransform->world = XMMatrixRotationY(_angle);
-	_mappedMatrices[0] = XMMatrixRotationY(_angle);
+	//_mappedMatrices[0] = XMMatrixRotationY(_angle);
+	_mappedMatrices[0] = _transform.world;
 	MotionUpdate();
 }
 void
@@ -734,4 +735,9 @@ void PMDActor::PlayAnimation()
 {
 	_startTime = timeGetTime();
 	isStart = true;
+}
+
+void PMDActor::Move(float x, float y, float z)
+{
+	_transform.world = XMMatrixTranslation(x, y, z);
 }

@@ -26,6 +26,8 @@ private:
 	std::shared_ptr<Dx12Wrapper> _dx12;
 	std::shared_ptr<PMDRenderer> _pmdRenderer;
 	std::shared_ptr<PMDActor> _pmdActor;
+	std::shared_ptr<PMDActor> _pmdActor2;
+	std::vector<std::shared_ptr<PMDActor>> _pmdActors;
 
 	//ゲーム用ウィンドウの生成
 	void CreateGameWindow(HWND &hwnd, WNDCLASSEX &windowClass);
