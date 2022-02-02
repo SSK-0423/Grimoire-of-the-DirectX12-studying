@@ -799,6 +799,8 @@ Dx12Wrapper::CreateSceneView() {
 		1.f,//近い方
 		100.0f//遠い方
 	);
+	//逆プロジェクション行列取得
+	_mappedSceneData->invProj = XMMatrixInverse(nullptr, _mappedSceneData->proj);
 
 	auto eyePos = XMLoadFloat3(&eye);
 	auto targetPos = XMLoadFloat3(&target);
@@ -1062,7 +1064,7 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	gpsDesc.SampleDesc.Quality = 0;
 	gpsDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 
-	D3D12_DESCRIPTOR_RANGE range[5] = {};
+	D3D12_DESCRIPTOR_RANGE range[6] = {};
 	//前パスのレンダリング結果
 	range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
 	range[0].BaseShaderRegister = 0;	// t0～t4
@@ -1088,7 +1090,12 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	range[4].BaseShaderRegister = 8;
 	range[4].NumDescriptors = 1;
 
-	D3D12_ROOT_PARAMETER rootParam[5] = {};
+	//シーン行列用
+	range[5].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;	// b
+	range[5].BaseShaderRegister = 1;
+	range[5].NumDescriptors = 1;
+
+	D3D12_ROOT_PARAMETER rootParam[6] = {};
 	rootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParam[0].DescriptorTable.pDescriptorRanges = &range[0];
@@ -1114,6 +1121,10 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	rootParam[4].DescriptorTable.pDescriptorRanges = &range[4];
 	rootParam[4].DescriptorTable.NumDescriptorRanges = 1;
 
+	rootParam[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParam[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParam[5].DescriptorTable.pDescriptorRanges = &range[5];
+	rootParam[5].DescriptorTable.NumDescriptorRanges = 1;
 
 	D3D12_STATIC_SAMPLER_DESC sampler = CD3DX12_STATIC_SAMPLER_DESC(0);	// s0
 
@@ -1517,6 +1528,7 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 		D3D12_RESOURCE_STATE_RENDER_TARGET
 	);
 	_cmdList->ResourceBarrier(1, &barrier);
+
 	auto srvHandle = _peraSRVHeap->GetGPUDescriptorHandleForHeapStart();
 	auto rtvBaseHandle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
 	auto rtvIncSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -1536,6 +1548,11 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	//シェーダー側でtexHighLumを使用する
 	_cmdList->SetDescriptorHeaps(1, _peraSRVHeap.GetAddressOf());
 	_cmdList->SetGraphicsRootDescriptorTable(0, srvHandle);
+
+	//現在のシーン(ビュープロジェクション)をセット
+	ID3D12DescriptorHeap* sceneheaps[] = { _sceneDescHeap.Get() };
+	_cmdList->SetDescriptorHeaps(1, _sceneDescHeap.GetAddressOf());
+	_cmdList->SetGraphicsRootDescriptorTable(5, _sceneDescHeap->GetGPUDescriptorHandleForHeapStart());
 
 	auto desc = _bloomBuffer[0]->GetDesc();
 	D3D12_VIEWPORT vp = {};
@@ -1598,14 +1615,9 @@ void Dx12Wrapper::DrawAmbientOcculusion()
 
 	auto rtvBaseHandle = _aoRTVHeap->GetCPUDescriptorHandleForHeapStart();
 	_cmdList->OMSetRenderTargets(1, &rtvBaseHandle, false, nullptr);
+	
 	_cmdList->SetGraphicsRootSignature(_peraRootSignature.Get());
 	_cmdList->SetPipelineState(_aoPipeline.Get());
-
-	D3D12_VIEWPORT vp = CD3DX12_VIEWPORT(0.0f, 0.0f, shadow_difinition, shadow_difinition);
-	_cmdList->RSSetViewports(1, &vp);//ビューポート
-
-	CD3DX12_RECT rc(0, 0, shadow_difinition, shadow_difinition);
-	_cmdList->RSSetScissorRects(1, &rc);//シザー(切り抜き)矩形
 
 	auto srvHandle = _peraSRVHeap->GetGPUDescriptorHandleForHeapStart();
 	_cmdList->SetDescriptorHeaps(1, _peraSRVHeap.GetAddressOf());
@@ -1614,6 +1626,15 @@ void Dx12Wrapper::DrawAmbientOcculusion()
 	auto srvDsvHandle = _depthSRVHeap->GetGPUDescriptorHandleForHeapStart();
 	_cmdList->SetDescriptorHeaps(1, _depthSRVHeap.GetAddressOf());
 	_cmdList->SetGraphicsRootDescriptorTable(3, srvDsvHandle); 
+
+	//現在のシーン(ビュープロジェクション)をセット
+	ID3D12DescriptorHeap* sceneheaps[] = { _sceneDescHeap.Get() };
+	_cmdList->SetDescriptorHeaps(1, _sceneDescHeap.GetAddressOf());
+	_cmdList->SetGraphicsRootDescriptorTable(5, _sceneDescHeap->GetGPUDescriptorHandleForHeapStart());
+
+	//ビューポート、シザー矩形のセット
+	_cmdList->RSSetViewports(1, _viewport.get());
+	_cmdList->RSSetScissorRects(1, _scissorrect.get());
 
 	_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	_cmdList->IASetVertexBuffers(0, 1, &_peraVBV);

@@ -50,6 +50,7 @@ class Dx12Wrapper
 	struct SceneData {
 		DirectX::XMMATRIX view;	//ビュー行列
 		DirectX::XMMATRIX proj;	//プロジェクション行列
+		DirectX::XMMATRIX invProj;	//逆プロジェクション行列
 		DirectX::XMMATRIX lightCamera;	//ライトから見たビュー
 		DirectX::XMMATRIX shadow;	//影
 		DirectX::XMFLOAT3 eye;//視点座標

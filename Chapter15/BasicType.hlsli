@@ -27,6 +27,7 @@ cbuffer SceneData : register(b0)
 {
     matrix view;
     matrix proj; //ビュープロジェクション行列
+    matrix invPro;  //逆プロジェクション行列
     matrix lightCamera; //ライトビュープロジェクション
     matrix shadow; //影行列
     float3 eye;
