@@ -147,6 +147,14 @@ class Dx12Wrapper
 	ComPtr<ID3D12Resource> _dofBuffer;
 	HRESULT CreateDofBuffer();
 
+	//アンビエントオクルージョン関連
+	ComPtr<ID3D12Resource> _aoBuffer = nullptr;
+	ComPtr<ID3D12PipelineState> _aoPipeline = nullptr;
+	ComPtr<ID3D12DescriptorHeap> _aoRTVHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> _aoSRVHeap = nullptr;
+	HRESULT CreateAmbientOcclusionBuffer();
+	HRESULT CreateAmbientOcclusionDescriptorHeap();
+
 public:
 	Dx12Wrapper(HWND hwnd);
 	~Dx12Wrapper();
@@ -171,7 +179,8 @@ public:
 	void DrawFinalRenderTarget();
 	//縮小バッファーへの書き込み
 	void DrawShrinkTextureForBlur();
-
+	//アンビエントオクルージョン描画
+	void DrawAmbientOcculusion();
 
 	void EndDraw();
 	void BeginDraw();

@@ -1392,6 +1392,13 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	);
 	_cmdList->ResourceBarrier(1, &barrier);
 
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		_dofBuffer.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET
+	);
+	_cmdList->ResourceBarrier(1, &barrier);
+
 	auto srvHandle = _peraSRVHeap->GetGPUDescriptorHandleForHeapStart();
 	auto rtvBaseHandle = _peraRTVHeap->GetCPUDescriptorHandleForHeapStart();
 	auto rtvIncSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -1448,6 +1455,13 @@ void Dx12Wrapper::DrawShrinkTextureForBlur()
 	//縮小バッファーをシェーダーリソースに
 	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 		_bloomBuffer[1].Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+	_cmdList->ResourceBarrier(1, &barrier);
+
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		_dofBuffer.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);

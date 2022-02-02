@@ -82,6 +82,9 @@
     <FxCompile Include="VerticalBokehPS.hlsl">
       <Filter>シェーダー</Filter>
     </FxCompile>
+    <FxCompile Include="SSAOPixelShader.hlsl">
+      <Filter>シェーダー</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="BasicType.hlsli">

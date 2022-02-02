@@ -101,6 +101,10 @@ Application::Run() {
 			_dx12->EndDrawRenderTarget1();
 			_dx12->DrawShrinkTextureForBlur();
 		}
+		//アンビエントオクルージョン描画
+		{
+			_dx12->DrawAmbientOcculusion();
+		}
 		//2パス目の結果をテクスチャとして受け取って表示
 		{
 			//ここは多分あってる

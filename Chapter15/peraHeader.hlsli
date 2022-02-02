@@ -7,6 +7,8 @@ Texture2D<float4> effectTex : register(t5); //エフェクト用テクスチャ
 //深度値検証用
 Texture2D<float> depthTex : register(t6);  //深度
 Texture2D<float> lightDepthTex : register(t7); //ライトデプス
+//アンビエントオクルージョン用
+Texture2D<float> texSSAO : register(t8);    //SSAO
 
 SamplerState smp : register(s0);
 

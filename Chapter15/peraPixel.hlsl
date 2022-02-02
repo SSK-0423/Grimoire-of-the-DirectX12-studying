@@ -155,8 +155,6 @@ float4 GaussianBlurX(Output output)
     return float4(ret.rgb, col.a);
 }
 
-
-
 float4 grayScale(float4 color)
 {
     return dot(color.rgb, float3(0.299, 0.587, 0.144));
@@ -219,7 +217,11 @@ float4 ps(Output input) : SV_TARGET
 	{
 		return texNormal.Sample(smp, (input.uv - float2(0, 0.4)) * 5);
 	}
-    
+    //else if(input.uv.x < 0.2 && input.uv.y < 0.8)
+    //{
+    //    float s = texSSAO.Sample(smp, (input.uv - float2(0, 0.6)) * 5);
+    //    return (s, s, s, 1);
+    //}
     /*
         ペラポリゴンの方は両方のデプスバッファーが来ている
         →ミスしているのはPMD側？
