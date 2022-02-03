@@ -31,7 +31,8 @@ class Dx12Wrapper
 	//表示に関わるバッファ周り
 	std::vector<ID3D12Resource*> _backBuffers;//バックバッファ(2つ以上…スワップチェインが確保)
 	ComPtr<ID3D12DescriptorHeap> _rtvHeaps = nullptr;//レンダーターゲット用デスクリプタヒープ
-	
+	float _bgColor[4] = { 0.5f,0.5f,0.5f,1.f };
+
 	//深度関連
 	ComPtr<ID3D12Resource> _depthBuffer = nullptr;//深度バッファ
 	ComPtr<ID3D12DescriptorHeap> _dsvHeap = nullptr;//深度バッファビュー用デスクリプタヒープ
@@ -59,6 +60,8 @@ class Dx12Wrapper
 	ComPtr<ID3D12DescriptorHeap> _sceneDescHeap = nullptr;
 	//平行ライトの向き
 	DirectX::XMFLOAT3 _perallelLightvVec;
+	//Fov
+	float _fov = DirectX::XM_PIDIV4;
 
 	//フェンス
 	ComPtr<ID3D12Fence> _fence = nullptr;
@@ -156,6 +159,10 @@ class Dx12Wrapper
 	HRESULT CreateAmbientOcclusionBuffer();
 	HRESULT CreateAmbientOcclusionDescriptorHeap();
 
+	// imgui用のヒープ生成
+	ComPtr<ID3D12DescriptorHeap> _heapForImgui = nullptr;	//ヒープ保持用
+	ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeapForImgui();
+
 public:
 	Dx12Wrapper(HWND hwnd);
 	~Dx12Wrapper();
@@ -192,9 +199,18 @@ public:
 	ComPtr< ID3D12Device> Device();//デバイス
 	ComPtr < ID3D12GraphicsCommandList> CommandList();//コマンドリスト
 	ComPtr < IDXGISwapChain4> Swapchain();//スワップチェイン
-
+	ComPtr<ID3D12DescriptorHeap> GetHeapForImgui();	//ImGui用のヒープ取得
 	void SetScene();
 	//シーン設定
 	void SetCameraSetting();
+
+	//Imguiによる操作反映
+	void SetDebugDisplay(bool flg);	//デバッグ表示のON / OFF
+	void SetSSAO(bool flg);			//SSAOのON / OFF
+	void SetSelfShadow(bool flg);	//セルフシャドウ ON / OFF
+	void SetFov(float fov);			//画角(30°～150°)
+	void SetLightVector(float vec[3]);	//光線ベクトル(xyzベクトル)
+	void SetBackColor(float col[4]);	//背景色の変更
+	void SetBloomColor(float col[3]);	//ブルームの色付け
 };
 

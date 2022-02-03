@@ -248,6 +248,20 @@ HRESULT Dx12Wrapper::CreateAmbientOcclusionDescriptorHeap()
 	return result;
 }
 
+//imgui用ヒープ生成
+ComPtr<ID3D12DescriptorHeap> Dx12Wrapper::CreateDescriptorHeapForImgui()
+{
+	ComPtr<ID3D12DescriptorHeap> ret;
+	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	heapDesc.NodeMask = 0;
+	heapDesc.NumDescriptors = 1;
+
+	_dev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(ret.ReleaseAndGetAddressOf()));
+	return ret;
+}
+
 Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 #ifdef _DEBUG
 	//デバッグレイヤーをオンに
@@ -345,12 +359,6 @@ Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 		assert(0);
 		return;
 	}
-	
-	//if (FAILED(CreateShadowPipeline()))
-	//{
-	//	assert(0);
-	//	return;
-	//}
 
 	//フェンスの作成
 	if (FAILED(_dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(_fence.ReleaseAndGetAddressOf())))) {
@@ -358,6 +366,13 @@ Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 		return;
 	}
 
+	// imguiヒープ初期化
+	_heapForImgui = CreateDescriptorHeapForImgui();
+	if (_heapForImgui == nullptr)
+	{
+		assert(0);
+		return;
+	}
 }
 
 HRESULT
@@ -575,7 +590,7 @@ void Dx12Wrapper::SetCameraSetting()
 	XMFLOAT3 up(0, 1, 0);
 	XMFLOAT4 planeNormalVec(0, 1, 0, 0);	// 平面の方程式
 	_mappedSceneData->view = XMMatrixLookAtLH(XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
-	_mappedSceneData->proj = XMMatrixPerspectiveFovLH(XM_PIDIV4,//画角は45°
+	_mappedSceneData->proj = XMMatrixPerspectiveFovLH(_fov,//画角は45°
 		static_cast<float>(desc.Width) / static_cast<float>(desc.Height),//アス比
 		1.f,//近い方
 		100.0f//遠い方
@@ -591,6 +606,36 @@ void Dx12Wrapper::SetCameraSetting()
 	_mappedSceneData->lightCamera = XMMatrixLookAtLH(lightPos, targetPos, upVec) * XMMatrixOrthographicLH(40, 40, 1.f, 100.f);
 	_mappedSceneData->shadow = XMMatrixShadow(XMLoadFloat4(&planeNormalVec), -XMLoadFloat3(&_perallelLightvVec));	//影行列作成
 	_mappedSceneData->eye = eye;
+}
+
+void Dx12Wrapper::SetDebugDisplay(bool flg)
+{
+}
+
+void Dx12Wrapper::SetSSAO(bool flg)
+{
+}
+
+void Dx12Wrapper::SetSelfShadow(bool flg)
+{
+}
+
+void Dx12Wrapper::SetFov(float fov)
+{
+	_fov = fov;
+}
+
+void Dx12Wrapper::SetLightVector(float vec[3])
+{
+}
+
+void Dx12Wrapper::SetBackColor(float col[4])
+{
+	copy_n(col, 4, begin(_bgColor));
+}
+
+void Dx12Wrapper::SetBloomColor(float col[3])
+{
 }
 
 std::vector<float> Dx12Wrapper::GetGaussianWeights(size_t count, float s)
@@ -1263,7 +1308,7 @@ Dx12Wrapper::CreateFinalRenderTargets() {
 	return result;
 }
 
-ComPtr< ID3D12Device>
+ComPtr<ID3D12Device>
 Dx12Wrapper::Device() {
 	return _dev;
 }
@@ -1325,7 +1370,7 @@ void Dx12Wrapper::PreDrawRenderTarget1()
 			_cmdList->ClearRenderTargetView(handles[i], clearColor, 0, nullptr);
 			continue;
 		 }
-		_cmdList->ClearRenderTargetView(handles[i], clearColor, 0, nullptr);
+		_cmdList->ClearRenderTargetView(handles[i], _bgColor, 0, nullptr);
 	}
 	//深度クリア
 	_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
@@ -1463,7 +1508,7 @@ void Dx12Wrapper::PreDrawFinalRenderTarget()
 
 	//画面クリア
 	float clearColor[] = { 0.5f,0.5f,0.5f,1.0f };//白色
-	_cmdList->ClearRenderTargetView(rtvHeapPointer, clearColor, 0, nullptr);
+	_cmdList->ClearRenderTargetView(rtvHeapPointer, _bgColor, 0, nullptr);
 	//ビューポート、シザー矩形のセット
 	_cmdList->RSSetViewports(1, _viewport.get());
 	_cmdList->RSSetScissorRects(1, _scissorrect.get());
@@ -1746,4 +1791,9 @@ Dx12Wrapper::EndDraw() {
 ComPtr < IDXGISwapChain4>
 Dx12Wrapper::Swapchain() {
 	return _swapchain;
+}
+
+ComPtr<ID3D12DescriptorHeap> Dx12Wrapper::GetHeapForImgui()
+{
+	return _heapForImgui;
 }

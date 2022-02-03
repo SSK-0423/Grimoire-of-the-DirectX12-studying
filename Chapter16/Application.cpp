@@ -3,9 +3,16 @@
 #include"PMDRenderer.h"
 #include"PMDActor.h"
 
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_win32.h"
+#include "imgui/imgui_impl_dx12.h"
+
 //ウィンドウ定数
 const unsigned int window_width = 1280;
 const unsigned int window_height = 720;
+
+//この関数の本体がimgui_win32_impl.cppにあるのでexternでプロトタイプ宣言する
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 //面倒だけど書かなあかんやつ
 LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -13,6 +20,7 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		PostQuitMessage(0);//OSに対して「もうこのアプリは終わるんや」と伝える
 		return 0;
 	}
+	ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam);
 	return DefWindowProc(hwnd, msg, wparam, lparam);//規定の処理を行う
 }
 
@@ -66,7 +74,6 @@ Application::Run() {
 		if (msg.message == WM_QUIT) {
 			break;
 		}
-
 		//シャドウマップ
 		//1.ライト視点での深度値撮影	shadowPipeline rootsignature
 		//2.モデル通常描画	
@@ -110,8 +117,67 @@ Application::Run() {
 			//ここは多分あってる
 			_dx12->PreDrawFinalRenderTarget();
 			_dx12->DrawFinalRenderTarget();
-			_dx12->EndDraw();
 		}
+
+		//ImGui描画
+		//ExcuteCommandなどの前に記述する
+		//モデルなどより前に秒がすると、塗りつぶされてしまうので
+		//GUIの描画は最後に行う方がよい
+		{
+			//描画前初期化
+			//この順序は仕様
+			ImGui_ImplDX12_NewFrame();
+			ImGui_ImplWin32_NewFrame();
+			ImGui::NewFrame();
+
+			{
+				ImGui::Begin("Rendering Test Menu"); //ウィンドウの名前
+				ImGui::SetWindowSize(
+					ImVec2(400, 500), ImGuiCond_::ImGuiCond_FirstUseEver);//ウィンドウサイズ
+				static bool blnDebugDsip = false;
+				ImGui::Checkbox("CheckboxTest", &blnDebugDsip);
+
+				static bool blnSSAO = false;
+				ImGui::Checkbox("SSAO on/off", &blnSSAO);
+
+				static bool blnShadowmap = false;
+				ImGui::Checkbox("Self Shadow on/off", &blnShadowmap);
+
+				constexpr float pi = 3.141592653589f;
+				static float fov = pi / 4.f;
+				ImGui::SliderFloat("Field of view",&fov, pi / 6.f, pi * 5.f / 6.f);
+
+				static float lightVec[3] = {};
+				ImGui::SliderFloat3("Light vector", lightVec, -1.f, 1.f);
+
+				static float bgcol4[4] = {0.5f,0.5f,0.5f,1.f};
+				ImGui::ColorPicker4("BG Color", bgcol4,
+					ImGuiColorEditFlags_::ImGuiColorEditFlags_PickerHueWheel |
+					ImGuiColorEditFlags_::ImGuiColorEditFlags_AlphaBar);
+
+				static float bloomCol[3] = {};
+				ImGui::ColorPicker3("Bloom Color", bloomCol);
+
+				// Dx12Wrapperに対して設定を渡す
+				_dx12->SetDebugDisplay(blnDebugDsip);
+				_dx12->SetSSAO(blnSSAO);
+				_dx12->SetSelfShadow(blnShadowmap);
+				_dx12->SetFov(fov);
+				_dx12->SetLightVector(lightVec);
+				_dx12->SetBackColor(bgcol4);
+				_dx12->SetBloomColor(bloomCol);
+
+				ImGui::End();
+			}
+			
+			//以下の3行を書くことで描画される
+			ImGui::Render();	
+			_dx12->CommandList()->SetDescriptorHeaps(
+				1, _dx12->GetHeapForImgui().GetAddressOf());
+			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), _dx12->CommandList().Get());
+		}
+
+		_dx12->EndDraw();
 		//フリップ
 		_dx12->Swapchain()->Present(1, 0);
 	}
@@ -139,6 +205,29 @@ Application::Init() {
 	_pmdActors[2].reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
 	_pmdActors[2]->Move(-10, 0, 10);
 	//_pmdActor->PlayAnimation();
+
+	//ImGui関連の初期化
+	{
+		if (ImGui::CreateContext() == nullptr)
+		{
+			assert(0);
+			return false;
+		}
+		//[ImGui::]
+		bool blnResult = ImGui_ImplWin32_Init(_hwnd);
+		if (!blnResult)
+		{
+			assert(0);
+			return false;
+		}
+		blnResult = ImGui_ImplDX12_Init(
+			_dx12->Device().Get(),// DirectX12デバイス
+			3,	//後述：説明にはframes_in_flightとあるが
+			DXGI_FORMAT_R8G8B8A8_UNORM,
+			_dx12->GetHeapForImgui().Get(),
+			_dx12->GetHeapForImgui()->GetCPUDescriptorHandleForHeapStart(),
+			_dx12->GetHeapForImgui()->GetGPUDescriptorHandleForHeapStart());
+	}
 	return true;
 }
 
