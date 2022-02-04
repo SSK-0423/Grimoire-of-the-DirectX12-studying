@@ -298,18 +298,22 @@ float4 ps(Output input) : SV_TARGET
         retColor[1].rgb *= texSSAO.Sample(smp, input.uv);
     }
     
-    float4 bloomCol = float4(bloomAccum.rgb * bloomColor, bloomAccum.a);
+    float4 bloomCol = float4(bloomAccum.rgb * bloomColor.rgb, bloomAccum.a);
     
-    float4 ret1 = float4(retColor[0].rgb, 1)
-        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-        + saturate(bloomCol);
-    float4 ret2 = float4(retColor[1].rgb, 1)
-        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-        + saturate(bloomCol);
-    float4 lerpCol = lerp(ret1, ret2, t);
+    
+    if(isDepthOfField)
+    {
+        float4 ret1 = float4(retColor[0].rgb, 1)
+            + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
+            + saturate(bloomCol);
+        float4 ret2 = float4(retColor[1].rgb, 1)
+            + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
+            + saturate(bloomCol);
+        return lerp(ret1, ret2, t);
+    }
+    
     return float4(col.rgb, 1)
         + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
         + saturate(bloomCol);
-    return lerpCol;
 
 }

@@ -38,7 +38,7 @@ Application::CreateGameWindow(HWND &hwnd, WNDCLASSEX &windowClass) {
 	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);//ウィンドウのサイズはちょっと面倒なので関数を使って補正する
 	//ウィンドウオブジェクトの生成
 	hwnd = CreateWindow(windowClass.lpszClassName,//クラス名指定
-		_T("DX12アニメーション"),//タイトルバーの文字
+		_T("DX12ImGui"),//タイトルバーの文字
 		WS_OVERLAPPEDWINDOW,//タイトルバーと境界線があるウィンドウです
 		CW_USEDEFAULT,//表示X座標はOSにお任せします
 		CW_USEDEFAULT,//表示Y座標はOSにお任せします
@@ -48,7 +48,6 @@ Application::CreateGameWindow(HWND &hwnd, WNDCLASSEX &windowClass) {
 		nullptr,//メニューハンドル
 		windowClass.hInstance,//呼び出しアプリケーションハンドル
 		nullptr);//追加パラメータ
-
 }
 
 SIZE
@@ -143,6 +142,9 @@ Application::Run() {
 				static bool blnShadowmap = false;
 				ImGui::Checkbox("Self Shadow on/off", &blnShadowmap);
 
+				static bool blnDepthOfField = false;
+				ImGui::Checkbox("DepthOfField on/off", &blnDepthOfField);
+
 				constexpr float pi = 3.141592653589f;
 				static float fov = pi / 4.f;
 				ImGui::SliderFloat("Field of view",&fov, pi / 6.f, pi * 5.f / 6.f);
@@ -162,6 +164,7 @@ Application::Run() {
 				_dx12->SetDebugDisplay(blnDebugDsip);
 				_dx12->SetSSAO(blnSSAO);
 				_dx12->SetSelfShadow(blnShadowmap);
+				_dx12->SetDepthOfField(blnDepthOfField);
 				_dx12->SetFov(fov);
 				_dx12->SetLightVector(lightVec);
 				_dx12->SetBackColor(bgcol4);

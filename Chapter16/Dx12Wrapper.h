@@ -176,6 +176,7 @@ class Dx12Wrapper
 		DirectX::XMFLOAT4 bloomColor;	//ブルームカラー
 		BOOL isDebugDisp;	//デバッグ表示 HLSLのboolは4バイトなのでBOOLを使う
 		BOOL isSSAO;		//SSAOオン HLSLのboolは4バイトなのでBOOLを使う
+		BOOL isDepthOfField;//被写界深度オン
 	};//サイズ：18バイト→4バイトアライメントで20になる
 #pragma pack()
 	ComPtr<ID3D12Resource> _postSettingResource;
@@ -228,6 +229,7 @@ public:
 	void SetDebugDisplay(bool flg);	//デバッグ表示のON / OFF
 	void SetSSAO(bool flg);			//SSAOのON / OFF
 	void SetSelfShadow(bool flg);	//セルフシャドウ ON / OFF
+	void SetDepthOfField(bool flg);	//被写界深度 ON / OFF
 	void SetFov(float fov);			//画角(30°～150°)
 	void SetLightVector(float vec[3]);	//光線ベクトル(xyzベクトル)
 	void SetBackColor(float col[4]);	//背景色の変更

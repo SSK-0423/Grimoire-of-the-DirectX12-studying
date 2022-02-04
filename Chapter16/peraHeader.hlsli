@@ -35,6 +35,7 @@ cbuffer PostSetting : register(b2)
     float4 bloomColor;  //ブルームの着色
     bool isDebugDisp;   //デバッグ表示フラグ
     bool isSSAO;        //SSAO有効フラグ
+    bool isDepthOfField;//被写界深度
 };
 
 struct Output

@@ -693,6 +693,11 @@ void Dx12Wrapper::SetSelfShadow(bool flg)
 	_isSelfShadow = flg;
 }
 
+void Dx12Wrapper::SetDepthOfField(bool flg)
+{
+	_mappedPostSetting->isDepthOfField = flg;
+}
+
 void Dx12Wrapper::SetFov(float fov)
 {
 	_fov = fov;
