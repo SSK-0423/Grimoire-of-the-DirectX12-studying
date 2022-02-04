@@ -135,7 +135,7 @@ Application::Run() {
 				ImGui::SetWindowSize(
 					ImVec2(400, 500), ImGuiCond_::ImGuiCond_FirstUseEver);//ウィンドウサイズ
 				static bool blnDebugDsip = false;
-				ImGui::Checkbox("CheckboxTest", &blnDebugDsip);
+				ImGui::Checkbox("DebugDisplay", &blnDebugDsip);
 
 				static bool blnSSAO = false;
 				ImGui::Checkbox("SSAO on/off", &blnSSAO);
@@ -147,7 +147,7 @@ Application::Run() {
 				static float fov = pi / 4.f;
 				ImGui::SliderFloat("Field of view",&fov, pi / 6.f, pi * 5.f / 6.f);
 
-				static float lightVec[3] = {};
+				static float lightVec[3] = {-1.f,1.f,-1.f};
 				ImGui::SliderFloat3("Light vector", lightVec, -1.f, 1.f);
 
 				static float bgcol4[4] = {0.5f,0.5f,0.5f,1.f};

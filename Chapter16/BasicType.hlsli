@@ -30,7 +30,9 @@ cbuffer SceneData : register(b0)
     matrix invPro;  //逆プロジェクション行列
     matrix lightCamera; //ライトビュープロジェクション
     matrix shadow; //影行列
+    float4 lightVec;    //ライトベクトル
     float3 eye;
+    bool isSelfShadow;  //シャドウマップフラグ
 };
 cbuffer Transform : register(b1)
 {

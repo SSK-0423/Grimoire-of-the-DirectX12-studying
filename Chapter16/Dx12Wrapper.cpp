@@ -262,7 +262,64 @@ ComPtr<ID3D12DescriptorHeap> Dx12Wrapper::CreateDescriptorHeapForImgui()
 	return ret;
 }
 
-Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
+HRESULT Dx12Wrapper::CreatePostSettingResource()
+{
+	auto bufferSize = AlignmentedSize(sizeof(PostSetting), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+
+	//まずはバッファーを作る
+	CD3DX12_HEAP_PROPERTIES heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+	auto result = _dev->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(_postSettingResource.ReleaseAndGetAddressOf()));
+	if (FAILED(result))
+	{
+		assert(0);
+		return result;
+	}
+
+	//ディスクリプタヒープ
+	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	desc.NodeMask = 0;
+	desc.NumDescriptors = 1;
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	result = _dev->CreateDescriptorHeap(&desc, IID_PPV_ARGS(_postSettingHeap.ReleaseAndGetAddressOf()));
+	if (FAILED(result))
+	{
+		assert(0);
+		return result;
+	}
+
+	//ビューの作成
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+	cbvDesc.BufferLocation = _postSettingResource->GetGPUVirtualAddress();
+	cbvDesc.SizeInBytes = bufferSize;
+	_dev->CreateConstantBufferView(
+		&cbvDesc,
+		_postSettingHeap->GetCPUDescriptorHandleForHeapStart());
+
+	//マップ
+	result = _postSettingResource->Map(0, nullptr, (void**)&_mappedPostSetting);
+	if (FAILED(result))
+	{
+		assert(0);
+		return result;
+	}
+
+	_mappedPostSetting->isDebugDisp = false;
+	_mappedPostSetting->isSSAO = false;
+
+	return result;
+}
+
+Dx12Wrapper::Dx12Wrapper(HWND hwnd)
+	: _perallelLightvVec(1, -1, 1), _lightVec(-1.f,1.f,-1.f)
+{
 #ifdef _DEBUG
 	//デバッグレイヤーをオンに
 	EnableDebugLayer();
@@ -317,6 +374,12 @@ Dx12Wrapper::Dx12Wrapper(HWND hwnd) : _perallelLightvVec(1, -1, 1) {
 	}
 	//アンビエントオクルージョン用ディスクリプタヒープ生成
 	if (FAILED(CreateAmbientOcclusionDescriptorHeap()))
+	{
+		assert(0);
+		return;
+	}
+	//
+	if (FAILED(CreatePostSettingResource()))
 	{
 		assert(0);
 		return;
@@ -600,24 +663,34 @@ void Dx12Wrapper::SetCameraSetting()
 	auto targetPos = XMLoadFloat3(&target);
 	auto upVec = XMLoadFloat3(&up);
 
-	auto light = XMFLOAT4(-1, 1, -1, 0);
-	XMVECTOR lightVec = XMLoadFloat4(&light);
-	auto lightPos = targetPos + XMVector3Normalize(lightVec) * XMVector3Length(XMVectorSubtract(targetPos, eyePos)).m128_f32[0];
+	XMVECTOR lightVec = XMLoadFloat3(&_lightVec);
+	_perallelLightvVec.x = -_lightVec.x;
+	_perallelLightvVec.y = -_lightVec.y;
+	_perallelLightvVec.z = -_lightVec.z;
+
+	XMVECTOR lightPos = targetPos + XMVector3Normalize(lightVec) * XMVector3Length(XMVectorSubtract(targetPos, eyePos)).m128_f32[0];
 	_mappedSceneData->lightCamera = XMMatrixLookAtLH(lightPos, targetPos, upVec) * XMMatrixOrthographicLH(40, 40, 1.f, 100.f);
 	_mappedSceneData->shadow = XMMatrixShadow(XMLoadFloat4(&planeNormalVec), -XMLoadFloat3(&_perallelLightvVec));	//影行列作成
 	_mappedSceneData->eye = eye;
+	_mappedSceneData->lightVec.x = _lightVec.x;
+	_mappedSceneData->lightVec.y = _lightVec.y;
+	_mappedSceneData->lightVec.z = _lightVec.z;
+	_mappedSceneData->isSelfShadow = _isSelfShadow;
 }
 
 void Dx12Wrapper::SetDebugDisplay(bool flg)
 {
+	_mappedPostSetting->isDebugDisp = flg;
 }
 
 void Dx12Wrapper::SetSSAO(bool flg)
 {
+	_mappedPostSetting->isSSAO = flg;
 }
 
 void Dx12Wrapper::SetSelfShadow(bool flg)
 {
+	_isSelfShadow = flg;
 }
 
 void Dx12Wrapper::SetFov(float fov)
@@ -627,6 +700,10 @@ void Dx12Wrapper::SetFov(float fov)
 
 void Dx12Wrapper::SetLightVector(float vec[3])
 {
+	_lightVec.x = vec[0];
+	_lightVec.y = vec[1];
+	_lightVec.z = vec[2];
+	SetCameraSetting();
 }
 
 void Dx12Wrapper::SetBackColor(float col[4])
@@ -636,6 +713,9 @@ void Dx12Wrapper::SetBackColor(float col[4])
 
 void Dx12Wrapper::SetBloomColor(float col[3])
 {
+	_mappedPostSetting->bloomColor.x = col[0];
+	_mappedPostSetting->bloomColor.y = col[1];
+	_mappedPostSetting->bloomColor.z = col[2];
 }
 
 std::vector<float> Dx12Wrapper::GetGaussianWeights(size_t count, float s)
@@ -1109,7 +1189,7 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	gpsDesc.SampleDesc.Quality = 0;
 	gpsDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 
-	D3D12_DESCRIPTOR_RANGE range[6] = {};
+	D3D12_DESCRIPTOR_RANGE range[7] = {};
 	//前パスのレンダリング結果
 	range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;	// t
 	range[0].BaseShaderRegister = 0;	// t0～t4
@@ -1140,7 +1220,13 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	range[5].BaseShaderRegister = 1;
 	range[5].NumDescriptors = 1;
 
-	D3D12_ROOT_PARAMETER rootParam[6] = {};
+	//セッティング
+	range[6].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;	// b
+	range[6].BaseShaderRegister = 2;
+	range[6].NumDescriptors = 1;
+
+
+	D3D12_ROOT_PARAMETER rootParam[7] = {};
 	rootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParam[0].DescriptorTable.pDescriptorRanges = &range[0];
@@ -1170,6 +1256,11 @@ HRESULT Dx12Wrapper::CreatePeraPipeline()
 	rootParam[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParam[5].DescriptorTable.pDescriptorRanges = &range[5];
 	rootParam[5].DescriptorTable.NumDescriptorRanges = 1;
+
+	rootParam[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParam[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParam[6].DescriptorTable.pDescriptorRanges = &range[6];
+	rootParam[6].DescriptorTable.NumDescriptorRanges = 1;
 
 	D3D12_STATIC_SAMPLER_DESC sampler = CD3DX12_STATIC_SAMPLER_DESC(0);	// s0
 
@@ -1544,6 +1635,10 @@ void Dx12Wrapper::DrawFinalRenderTarget()
 	//アンビエントオクルージョン用テクスチャ
 	_cmdList->SetDescriptorHeaps(1, _aoSRVHeap.GetAddressOf());
 	_cmdList->SetGraphicsRootDescriptorTable(4, _aoSRVHeap->GetGPUDescriptorHandleForHeapStart());
+
+	//エフェクトセッティング用コンスタントバッファ―
+	_cmdList->SetDescriptorHeaps(1, _postSettingHeap.GetAddressOf());
+	_cmdList->SetGraphicsRootDescriptorTable(6, _postSettingHeap->GetGPUDescriptorHandleForHeapStart());
 
 	_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	_cmdList->IASetVertexBuffers(0, 1, &_peraVBV);

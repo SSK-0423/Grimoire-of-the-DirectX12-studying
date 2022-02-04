@@ -2,7 +2,7 @@
 
 PixelOutput BasicPS(BasicType input)
 {
-    float3 light = normalize(float3(1, -1, 1)); //光の向かうベクトル(平行光線)
+    float3 light = normalize(-lightVec); //光の向かうベクトル(平行光線)
     float3 lightColor = float3(1, 1, 1); //ライトのカラー(1,1,1で真っ白)
 
 	//ディフューズ計算
@@ -46,7 +46,10 @@ PixelOutput BasicPS(BasicType input)
 		posFromLightVP.z - 0.005f);	//比較対象値
 	
     float shadowWeight = 1.f;
-    shadowWeight = lerp(0.5f, 1.f, depthFromLight);	//0.0になったら0.5になるように
+	if(isSelfShadow)
+    {
+		shadowWeight = lerp(0.5f, 1.f, depthFromLight);	//0.0になったら0.5になるように
+    }
     //if (depthFromLight < posFromLightVP.z - 0.001f)
     //    shadowWeight = 0.5f;
 	

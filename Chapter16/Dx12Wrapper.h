@@ -54,7 +54,10 @@ class Dx12Wrapper
 		DirectX::XMMATRIX invProj;	//逆プロジェクション行列
 		DirectX::XMMATRIX lightCamera;	//ライトから見たビュー
 		DirectX::XMMATRIX shadow;	//影
+		DirectX::XMFLOAT4 lightVec;	//ライトベクトル(シェーダー側のアライメントを防ぐためfloat4に)
+
 		DirectX::XMFLOAT3 eye;//視点座標
+		bool isSelfShadow;
 	};
 	SceneData* _mappedSceneData;
 	ComPtr<ID3D12DescriptorHeap> _sceneDescHeap = nullptr;
@@ -62,7 +65,10 @@ class Dx12Wrapper
 	DirectX::XMFLOAT3 _perallelLightvVec;
 	//Fov
 	float _fov = DirectX::XM_PIDIV4;
-
+	//ライトベクトル
+	DirectX::XMFLOAT3 _lightVec;
+	//セルフシャドウ設定
+	bool _isSelfShadow = false;
 	//フェンス
 	ComPtr<ID3D12Fence> _fence = nullptr;
 	UINT64 _fenceVal = 0;
@@ -162,6 +168,20 @@ class Dx12Wrapper
 	// imgui用のヒープ生成
 	ComPtr<ID3D12DescriptorHeap> _heapForImgui = nullptr;	//ヒープ保持用
 	ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeapForImgui();
+	
+	//ポストエフェクト設定用
+#pragma pack(1)
+	struct PostSetting
+	{
+		DirectX::XMFLOAT4 bloomColor;	//ブルームカラー
+		BOOL isDebugDisp;	//デバッグ表示 HLSLのboolは4バイトなのでBOOLを使う
+		BOOL isSSAO;		//SSAOオン HLSLのboolは4バイトなのでBOOLを使う
+	};//サイズ：18バイト→4バイトアライメントで20になる
+#pragma pack()
+	ComPtr<ID3D12Resource> _postSettingResource;
+	PostSetting* _mappedPostSetting;
+	ComPtr<ID3D12DescriptorHeap> _postSettingHeap;
+	HRESULT CreatePostSettingResource();
 
 public:
 	Dx12Wrapper(HWND hwnd);

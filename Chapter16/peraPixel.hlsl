@@ -198,29 +198,32 @@ float4 ps(Output input) : SV_TARGET
     
     //return GaussianBlurX(input);
     //return float4(tex.Sample(smp, input.uv));
-    float depth = pow(depthTex.Sample(smp, input.uv), 20);  // 20乗する
+    float depth = pow(depthTex.Sample(smp, input.uv), 20); // 20乗する
     float lightDepth = pow(lightDepthTex.Sample(smp, input.uv), 1);
     
-	if (input.uv.x < 0.2 && input.uv.y < 0.2)   //深度出力
-	{
-		float depth = depthTex.Sample(smp, input.uv * 5);
-		depth = 1.f - pow(depth, 30);
-		return float4(depth, depth, depth, 1);
-	}
-	else if (input.uv.x < 0.2 && input.uv.y < 0.4)  //ライトからの深度出力
-	{
-		float depth = lightDepthTex.Sample(smp, (input.uv - float2(0, 0.2f)) * 5);
-		depth = 1 - depth;
-		return float4(depth, depth, depth, 1);
-	}
-	else if (input.uv.x < 0.2 && input.uv.y < 0.6)
-	{
-		return texNormal.Sample(smp, (input.uv - float2(0, 0.4)) * 5);
-	}
-    else if (input.uv.x < 0.2 && input.uv.y < 0.8)
+    if (isDebugDisp)
     {
-        float s = texSSAO.Sample(smp, (input.uv - float2(0, 0.6)) * 5);
-        return float4(s, s, s, 1);
+        if (input.uv.x < 0.2 && input.uv.y < 0.2)   //深度出力
+        {
+            float depth = depthTex.Sample(smp, input.uv * 5);
+            depth = 1.f - pow(depth, 30);
+            return float4(depth, depth, depth, 1);
+        }
+        else if (input.uv.x < 0.2 && input.uv.y < 0.4)  //ライトからの深度出力
+        {
+            float depth = lightDepthTex.Sample(smp, (input.uv - float2(0, 0.2f)) * 5);
+            depth = 1 - depth;
+            return float4(depth, depth, depth, 1);
+        }
+        else if (input.uv.x < 0.2 && input.uv.y < 0.6)
+        {
+            return texNormal.Sample(smp, (input.uv - float2(0, 0.4)) * 5);
+        }
+        else if (input.uv.x < 0.2 && input.uv.y < 0.8)
+        {
+            float s = texSSAO.Sample(smp, (input.uv - float2(0, 0.6)) * 5);
+            return float4(s, s, s, 1);
+        }
     }
     /*
         ペラポリゴンの方は両方のデプスバッファーが来ている
@@ -246,7 +249,7 @@ float4 ps(Output input) : SV_TARGET
     //画面真ん中からの深度の差を測る
     float depthDiff = abs(depthTex.Sample(smp, float2(0.5f, 0.5f)) - depthTex.Sample(smp, input.uv));
     //近い値でも変化が出るように
-    depthDiff = pow(depthDiff, 0.5f);   
+    depthDiff = pow(depthDiff, 0.5f);
     //サイズ初期化
     uvSize = float2(1, 0.5);
     uvOfst = float2(0, 0);
@@ -261,7 +264,7 @@ float4 ps(Output input) : SV_TARGET
     if (no == 0.f)
     {
         retColor[1] = Get5x5GaussianBlur(
-            texDof, smp, input.uv * uvSize + uvOfst, dx, dy, float4(uvOfst,uvOfst + uvSize));
+            texDof, smp, input.uv * uvSize + uvOfst, dx, dy, float4(uvOfst, uvOfst + uvSize));
     }
     else
     {
@@ -276,7 +279,7 @@ float4 ps(Output input) : SV_TARGET
                 texDof, smp, input.uv * uvSize + uvOfst, dx, dy, float4(uvOfst, uvOfst + uvSize));
             uvOfst.y += uvSize.y;
             uvSize *= 0.5f;
-            if(i - no > 1)
+            if (i - no > 1)
             {
                 break;
             }
@@ -287,56 +290,26 @@ float4 ps(Output input) : SV_TARGET
     float4 highLum = texHighLum.Sample(smp, input.uv);
     //return lerp(retColor[0], retColor[1], t);
     float4 col = tex.Sample(smp, input.uv);
-    //lerp(retColor[0], retColor[1], t);
-    //float4 ret1 = float4(retColor[0].rgb * texSSAO.Sample(smp, input.uv), 1)
-    //    + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-    //    + saturate(bloomAccum);
-    //float4 ret2 = float4(retColor[1].rgb * texSSAO.Sample(smp, input.uv), 1)
-    //    + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-    //    + saturate(bloomAccum);
+    
+    if (isSSAO)
+    {
+        col.rgb *= texSSAO.Sample(smp, input.uv);
+        retColor[0].rgb *= texSSAO.Sample(smp, input.uv);
+        retColor[1].rgb *= texSSAO.Sample(smp, input.uv);
+    }
+    
+    float4 bloomCol = float4(bloomAccum.rgb * bloomColor, bloomAccum.a);
+    
     float4 ret1 = float4(retColor[0].rgb, 1)
         + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-        + saturate(bloomAccum);
+        + saturate(bloomCol);
     float4 ret2 = float4(retColor[1].rgb, 1)
         + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-        + saturate(bloomAccum);
+        + saturate(bloomCol);
     float4 lerpCol = lerp(ret1, ret2, t);
+    return float4(col.rgb, 1)
+        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
+        + saturate(bloomCol);
     return lerpCol;
-    //float finalCol = float4(lerpCol.rgb * texSSAO.Sample(smp, input.uv), 1);
-    //return finalCol;
-    
-    return float4(col.rgb * texSSAO.Sample(smp, input.uv), 1)
-        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-        + saturate(bloomAccum);
 
-    return tex.Sample(smp, input.uv);
-    return texSSAO.Sample(smp, input.uv);
-    return float4(col.rgb * texSSAO.Sample(smp, input.uv), 1);
-    return tex.Sample(smp, input.uv)
-        + Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 0, 1))
-        + saturate(bloomAccum);
-    
-    return Get5x5GaussianBlur(texHighLum, smp, input.uv, dx, dy, float4(0, 0, 1, 1));
-    return highLum;
-    
-    
-	return float4(tex.Sample(smp, input.uv));
-    return effectTex.Sample(smp, input.uv);
-    
-	return float4(depth, depth, depth, 1);
-	return float4(lightDepth, lightDepth, lightDepth, 1);
-    //return simpleGaussianBlur(input);
-    
-    //float4 col = tex.Sample(smp, input.uv);
-    //float edgeCol = filetring(input, edge);
-    //float grayEdgeCol = grayScale(edgeCol);
-    //return step(0.2, pow(reverseCol(grayEdgeCol), 10.f));
-    
-    //return float4(ret.rgb - fmod(ret.rbg, 0.25f), col.a);
-    //return float4(float3(0.7f,0.8f,0.7f) - ret.rgb - fmod(ret.rbg, 0.25f), ret.a);
-    //return float4(Y, Y, Y, 1);
-    //return float4(float3(1.f, 1.f, 1.f) - col.rgb, col.a);
-    //return float4(col.rgb - fmod(col.rgb, 0.25f), col.a);
-    //return tex.Sample(smp, input.uv);
-    //return float4(input.uv, 1, 1);
-	}
+}

@@ -24,8 +24,17 @@ cbuffer SceneData : register(b1)
     matrix proj; //ビュープロジェクション行列
     matrix invProj; //逆プロジェクション行列
     matrix lightCamera; //ライトビュープロジェクション
-    matrix shadow; //影行列
+    float4 lightVec; //ライトベクトル
     float3 eye;
+    bool isSelfShadow; //シャドウマップフラグ
+};
+
+//
+cbuffer PostSetting : register(b2)
+{
+    float4 bloomColor;  //ブルームの着色
+    bool isDebugDisp;   //デバッグ表示フラグ
+    bool isSSAO;        //SSAO有効フラグ
 };
 
 struct Output
